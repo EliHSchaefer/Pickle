@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Pickle v32 · Rack Groups + Auto Scan</title>
+<title>Pickle v33 · Walk & Map UPC</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{--bg:#0b0d10;--card:#15191f;--line:#2b313a;--amber:#ffad22;--text:#f5f7fa;--muted:#9ba5b1;--green:#35d07f;--red:#ff6262}
@@ -20,7 +20,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .rackGroup{padding:10px}.rackGroup h3{font-size:18px;margin:0}.rackItem{position:relative;width:100%;display:grid;grid-template-columns:1fr 64px;grid-template-areas:"desc qty" "sku qty";text-align:left;background:#0f1318;border:1px solid #303843;margin-top:8px;padding:12px;border-radius:12px}.rackDesc{grid-area:desc;font-size:16px;font-weight:800;padding-right:8px}.rackSku{grid-area:sku;color:#8f9aa6;font-size:11px;margin-top:4px}.rackQty{grid-area:qty;align-self:center;justify-self:end;font-size:30px;font-weight:900;color:#ffad22}.rackGroup.dog{border-left:5px solid #c78bff}.rackGroup.cat{border-left:5px solid #65d0ff}.rackGroup.bird{border-left:5px solid #ffd166}.rackGroup.litter{border-left:5px solid #a8dadc}.rackGroup.livestock{border-left:5px solid #8fd694}
 </style></head>
 <body><div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v32</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span></div>
+<header><div class="brand"><b>🥒 Pickle v33</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span></div>
 <nav id="tabs">
 <button class="tab active" data-v="capacity">Capacity</button>
 <button class="tab" data-v="packing">Packing Breakdown</button>
@@ -53,8 +53,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
  <div class="card"><h3>Shipment detail</h3><div id="packingRows" class="scroll"></div></div>
 </section>
 <section class="view" id="upc">
- <div class="card"><h2>UPC Key</h2><div class="muted">One SKU can have multiple valid bag/shelf UPCs. Scan/type two UPCs below to link them to the same product.</div></div>
- <div class="card"><input id="upcA" placeholder="First UPC"><br><input id="upcB" placeholder="Alternate UPC"><br><button class="primary" id="linkUpc">LINK UPCs</button></div>
+ <div class="card"><h2>UPC Key · Walk & Map</h2><div class="muted">No buttons. Scan <b>SHELF</b> → scan <b>BAG</b> → pair saves automatically → move to the next product. If the SKU is not known yet, Pickle keeps the pair and resolves it after a Master Pick mapping PDF is imported.</div></div>
+ <div class="card"><input id="upcA" placeholder="1 · Scan shelf UPC" readonly><br><input id="upcB" placeholder="2 · Scan bag UPC" readonly><div id="pairState" class="small muted" style="margin-top:8px">READY — SCAN SHELF</div></div>
  <div class="card"><h3>Known UPC mappings</h3><div id="upcList" class="scroll"></div></div>
 </section>
 <section class="view" id="master">
@@ -105,7 +105,24 @@ let modalCtx=null;
 function handleScan(raw){
  let code=norm(raw);if(!code)return;flash();
  let v=activeView();
- if(v==='upc'){if(!$('upcA').value)$('upcA').value=code;else $('upcB').value=code;return}
+ if(v==='upc'){
+   S.pendingPairs=S.pendingPairs||[];
+   if(!$('upcA').value){
+     $('upcA').value=code;$('upcB').value='';
+     if($('pairState'))$('pairState').textContent='SHELF CAPTURED — SCAN BAG';
+     flash('SHELF SAVED — SCAN BAG');
+   }else{
+     let a=norm($('upcA').value),b=code;$('upcB').value=b;
+     let pa=resolve(a),pb=resolve(b),p=pa||pb;
+     if(p){addUpc(p.sku,a);addUpc(p.sku,b);flash('LINKED — SCAN NEXT SHELF')}
+     else{S.pendingPairs.push({a,b,at:new Date().toISOString()});flash('PAIR SAVED — SCAN NEXT SHELF')}
+     save();
+     if($('pairState'))$('pairState').textContent=p?'LINKED ✓ — READY FOR NEXT SHELF':'PAIR SAVED ✓ — READY FOR NEXT SHELF';
+     setTimeout(()=>{$('upcA').value='';$('upcB').value='';if($('pairState'))$('pairState').textContent='READY — SCAN SHELF'},350);
+     render();
+   }
+   return
+ }
  let p=resolve(code);
  if(!p){p={sku:'UPC:'+code,description:'Unknown UPC '+code,section:'unknown',upcs:[code]};S.products[p.sku]=p;addUpc(p.sku,code)}
  if(v==='pick'||v==='rack'){let row=S.pick?.rows?.find(r=>r.sku===p.sku||r.upc===code); if(row&&row.remaining>0)return openAmount('pick',p,row); flash('NOT NEEDED — CAPACITY');return openAmount('capacity',p)}
@@ -121,7 +138,6 @@ function renderCaps(){let q=($('capSearch')?.value||'').toUpperCase();let arr=Ob
 $('capSearch').oninput=renderCaps;
 function renderMaster(){let q=($('masterSearch')?.value||'').toUpperCase();let a=Object.values(S.products).filter(p=>(p.sku+p.description+(p.upcs||[]).join()).toUpperCase().includes(q)).slice(0,400);$('masterList').innerHTML=a.map(p=>itemHtml(p)).join('')}
 $('masterSearch').oninput=renderMaster;
-$('linkUpc').onclick=()=>{let a=norm($('upcA').value),b=norm($('upcB').value);let pa=resolve(a),pb=resolve(b),p=pa||pb;if(!p){alert('Scan/type a UPC already tied to a SKU first, or import a UPC key.');return}addUpc(p.sku,a);addUpc(p.sku,b);$('upcA').value=$('upcB').value='';render()};
 function renderUpcs(){let rows=[];for(const p of Object.values(S.products))if((p.upcs||[]).length)rows.push(`<div class="item"><b>${p.description}</b><div class="small">SKU ${p.sku}: ${(p.upcs||[]).join(' ↔ ')}</div></div>`);$('upcList').innerHTML=rows.slice(0,500).join('')}
 async function pdfText(file){let buf=await file.arrayBuffer(),pdf=await pdfjsLib.getDocument({data:buf}).promise,out='';for(let i=1;i<=pdf.numPages;i++){let pg=await pdf.getPage(i),tc=await pg.getTextContent();out+=tc.items.map(x=>x.str).join(' ')+'\n'}return out}
 function parsePickText(t){let rows=[];let re=/(\d{7})\s+(\d{8,14})?\s*([A-Z0-9&'\/\-\.\s]+?)\s+[\w\-]+\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/g,m;while((m=re.exec(t))){let sku=m[1],upc=norm(m[2]),desc=m[3].replace(/\s+/g,' ').trim(),qty=+m[5];if(desc.length<3)continue;rows.push({sku,upc,description:desc,qty,picked:0,remaining:qty});let p=S.products[sku]||(S.products[sku]={sku,description:desc,section:'unknown',upcs:[]});p.description=p.description||desc;if(upc)addUpc(sku,upc)}return rows}
@@ -151,6 +167,14 @@ function parseMappingText(t){
    if(r.description&&(!p.description||p.description==='Unknown product'))p.description=r.description;
    // UPC may be blank/malformed in source; keep SKU/description but don't invent a barcode.
    if(upc.length>=8 && upc.length<=14){addUpc(sku,upc);learned++} else skipped++;
+ }
+ if(S.pendingPairs?.length){
+   let keep=[];
+   for(const pair of S.pendingPairs){
+     let p=resolve(pair.a)||resolve(pair.b);
+     if(p){addUpc(p.sku,pair.a);addUpc(p.sku,pair.b);learned++}else keep.push(pair);
+   }
+   S.pendingPairs=keep;
  }
  return {ok:true,validation:v,rows:plausible,learned,skipped};
 }
