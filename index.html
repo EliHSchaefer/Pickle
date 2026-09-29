@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Pickle v33 · Walk & Map UPC</title>
+<title>Pickle v34 · No Bag + Capacity Search</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{--bg:#0b0d10;--card:#15191f;--line:#2b313a;--amber:#ffad22;--text:#f5f7fa;--muted:#9ba5b1;--green:#35d07f;--red:#ff6262}
@@ -20,7 +20,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .rackGroup{padding:10px}.rackGroup h3{font-size:18px;margin:0}.rackItem{position:relative;width:100%;display:grid;grid-template-columns:1fr 64px;grid-template-areas:"desc qty" "sku qty";text-align:left;background:#0f1318;border:1px solid #303843;margin-top:8px;padding:12px;border-radius:12px}.rackDesc{grid-area:desc;font-size:16px;font-weight:800;padding-right:8px}.rackSku{grid-area:sku;color:#8f9aa6;font-size:11px;margin-top:4px}.rackQty{grid-area:qty;align-self:center;justify-self:end;font-size:30px;font-weight:900;color:#ffad22}.rackGroup.dog{border-left:5px solid #c78bff}.rackGroup.cat{border-left:5px solid #65d0ff}.rackGroup.bird{border-left:5px solid #ffd166}.rackGroup.litter{border-left:5px solid #a8dadc}.rackGroup.livestock{border-left:5px solid #8fd694}
 </style></head>
 <body><div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v33</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span></div>
+<header><div class="brand"><b>🥒 Pickle v34</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span></div>
 <nav id="tabs">
 <button class="tab active" data-v="capacity">Capacity</button>
 <button class="tab" data-v="packing">Packing Breakdown</button>
@@ -37,7 +37,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
  <div id="mappingStatus" class="small muted" style="margin-top:8px">No mapping PDF loaded this session.</div></div>
  <div class="card"><h3>Mapping coverage</h3><div id="mappingStats"></div></div>
 </section>
-<section class="view active" id="capacity">
+<section class="view active" id="capacity"><div class="card"><h3>Find bag by name</h3><div class="muted small">No UPC? Search any part of the product name, brand, or SKU, then tap the bag.</div><input id="capacitySearch" autocomplete="off" placeholder="Diamond, PPLN, goat, 50LB…"><div id="capacitySearchResults"></div></div>
  <div class="card"><h2>Capacity Mode</h2><div class="muted">Bluetooth scanner is always listening. Scan bag → choose capacity → immediately scan the next bag. No need to tap the UPC field between scans.</div></div>
  <div class="card row"><input id="manualScan" class="grow" inputmode="numeric" placeholder="Optional manual UPC / SKU entry"><button class="primary" id="manualScanBtn">GO</button></div>
  <div class="card"><div class="grid"><div class="stat"><span>Known capacities</span><b id="capCount">0</b></div><div class="stat"><span>Known UPCs</span><b id="upcCount">0</b></div><div class="stat"><span>Master SKUs</span><b id="masterCount">0</b></div></div></div>
@@ -54,7 +54,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 </section>
 <section class="view" id="upc">
  <div class="card"><h2>UPC Key · Walk & Map</h2><div class="muted">No buttons. Scan <b>SHELF</b> → scan <b>BAG</b> → pair saves automatically → move to the next product. If the SKU is not known yet, Pickle keeps the pair and resolves it after a Master Pick mapping PDF is imported.</div></div>
- <div class="card"><input id="upcA" placeholder="1 · Scan shelf UPC" readonly><br><input id="upcB" placeholder="2 · Scan bag UPC" readonly><div id="pairState" class="small muted" style="margin-top:8px">READY — SCAN SHELF</div></div>
+ <div class="card"><input id="upcA" placeholder="1 · Scan shelf UPC" readonly><br><input id="upcB" placeholder="2 · Scan bag UPC" readonly><button id="noBagBtn" type="button" style="width:100%;margin-top:10px;padding:14px;font-weight:900;border-radius:12px">NO BAG SEEN / NO VEO UNA BOLSA</button><div id="pairState" class="small muted" style="margin-top:8px">READY — SCAN SHELF</div></div>
  <div class="card"><h3>Known UPC mappings</h3><div id="upcList" class="scroll"></div></div>
 </section>
 <section class="view" id="master">
@@ -131,13 +131,19 @@ function handleScan(raw){
 function openAmount(mode,p,row=null){modalCtx={mode,p,row};$('modalMode').textContent=mode==='pick'?'PICK LIST · LOG BAGS PICKED':'CAPACITY · UPDATE HOW MANY FIT';$('modalName').textContent=p.description||p.sku;$('modalMeta').innerHTML=`SKU ${p.sku} · ${(p.upcs||[]).join(' / ')||'UPC unknown'} · ${p.section||'unknown'}`;$('modalPrompt').textContent=mode==='pick'?`Remaining: ${row.remaining}`:`Current capacity: ${S.capacities[p.sku]??'NOT SET'}`;let n=$('numbers');n.innerHTML='';for(let i=0;i<=12;i++){let b=document.createElement('button');b.className='num';b.textContent=i;b.onclick=()=>commitAmount(i);n.appendChild(b)}$('amountModal').classList.add('show')}
 function commitAmount(n){n=+n;if(modalCtx.mode==='capacity')S.capacities[modalCtx.p.sku]=n;else{modalCtx.row.picked=(modalCtx.row.picked||0)+n;modalCtx.row.remaining=Math.max(0,modalCtx.row.qty-modalCtx.row.picked)}save();$('amountModal').classList.remove('show');try{document.activeElement?.blur()}catch(e){}$('manualScan').value='';render();flash('READY — SCAN NEXT BAG')}
 $('closeModal').onclick=()=> $('amountModal').classList.remove('show');$('saveOther').onclick=()=>commitAmount($('otherAmt').value||0);
-function render(){renderMapping();renderStats();renderCaps();renderMaster();renderUpcs();renderPick();renderRack();renderPacking()}
+function render(){renderCapacitySearch();renderMapping();renderStats();renderCaps();renderMaster();renderUpcs();renderPick();renderRack();renderPacking()}
 function renderStats(){$('capCount').textContent=Object.keys(S.capacities).length;$('upcCount').textContent=Object.keys(S.aliases).length;$('masterCount').textContent=Object.keys(S.products).length}
 function itemHtml(p,extra=''){return `<div class="item section-${p.section||'unknown'}"><b>${p.description||p.sku}</b><div class="small muted">SKU ${p.sku} · ${(p.upcs||[]).join(' / ')||'UPC ?'} · ${p.section||'unknown'} ${extra}</div></div>`}
 function renderCaps(){let q=($('capSearch')?.value||'').toUpperCase();let arr=Object.entries(S.capacities).map(([sku,cap])=>[S.products[sku]||{sku,description:sku},cap]).filter(([p])=>(p.description+p.sku+(p.upcs||[]).join()).toUpperCase().includes(q));$('capList').innerHTML=arr.length?arr.map(([p,c])=>itemHtml(p,`· CAPACITY <b>${c}</b>`)).join(''):'<div class="item muted">No capacities recorded yet. Scan a bag.</div>'}
 $('capSearch').oninput=renderCaps;
 function renderMaster(){let q=($('masterSearch')?.value||'').toUpperCase();let a=Object.values(S.products).filter(p=>(p.sku+p.description+(p.upcs||[]).join()).toUpperCase().includes(q)).slice(0,400);$('masterList').innerHTML=a.map(p=>itemHtml(p)).join('')}
 $('masterSearch').oninput=renderMaster;
+
+$('noBagBtn').onclick=()=>{let shelf=norm($('upcA').value);if(!shelf){flash('SCAN SHELF FIRST');return}S.noBagSeen=S.noBagSeen||[];let p=resolve(shelf);S.noBagSeen.push({shelf,sku:p?.sku||null,description:p?.description||null,at:new Date().toISOString()});save();$('upcA').value='';$('upcB').value='';$('pairState').textContent='NO BAG RECORDED ✓ — READY FOR NEXT SHELF';flash('NO BAG RECORDED — SCAN NEXT SHELF');setTimeout(()=>{$('pairState').textContent='READY — SCAN SHELF'},600)};
+function productHasUpc(p){if(p.upcs&&p.upcs.length)return true;return Object.entries(S.aliases||{}).some(([u,sku])=>String(sku)===String(p.sku))}
+function renderCapacitySearch(){let box=$('capacitySearchResults'),inp=$('capacitySearch');if(!box||!inp)return;let q=(inp.value||'').trim().toUpperCase();if(!q){box.innerHTML='';return}let hits=Object.values(S.products).filter(p=>`${p.sku||''} ${p.description||''}`.toUpperCase().includes(q)).slice(0,30);box.innerHTML=hits.map(p=>{let has=productHasUpc(p),cap=S.capacities[p.sku];return `<button class="rackItem" type="button" onclick="openCapacityFromSearch('${p.sku}')"><span class="rackDesc">${p.description||'Unknown product'}${has?'':' <span class="warn">· NO UPC</span>'}</span><span class="rackSku">SKU ${p.sku} · ${has?'UPC mapped':'NAME SEARCH ONLY'}</span><span class="rackQty">${cap??'+'}</span></button>`}).join('')||'<div class="small warn" style="margin-top:10px">No matching product.</div>'}
+function openCapacityFromSearch(sku){let p=S.products[sku];if(!p)return;try{document.activeElement?.blur()}catch(e){}openAmount('capacity',p)}
+$('capacitySearch').addEventListener('input',renderCapacitySearch);
 function renderUpcs(){let rows=[];for(const p of Object.values(S.products))if((p.upcs||[]).length)rows.push(`<div class="item"><b>${p.description}</b><div class="small">SKU ${p.sku}: ${(p.upcs||[]).join(' ↔ ')}</div></div>`);$('upcList').innerHTML=rows.slice(0,500).join('')}
 async function pdfText(file){let buf=await file.arrayBuffer(),pdf=await pdfjsLib.getDocument({data:buf}).promise,out='';for(let i=1;i<=pdf.numPages;i++){let pg=await pdf.getPage(i),tc=await pg.getTextContent();out+=tc.items.map(x=>x.str).join(' ')+'\n'}return out}
 function parsePickText(t){let rows=[];let re=/(\d{7})\s+(\d{8,14})?\s*([A-Z0-9&'\/\-\.\s]+?)\s+[\w\-]+\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/g,m;while((m=re.exec(t))){let sku=m[1],upc=norm(m[2]),desc=m[3].replace(/\s+/g,' ').trim(),qty=+m[5];if(desc.length<3)continue;rows.push({sku,upc,description:desc,qty,picked:0,remaining:qty});let p=S.products[sku]||(S.products[sku]={sku,description:desc,section:'unknown',upcs:[]});p.description=p.description||desc;if(upc)addUpc(sku,upc)}return rows}
