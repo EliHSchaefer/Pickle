@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Pickle v35 · UPC Follow-up Queue</title>
+<title>Pickle v36 · Rack + UPC Fix</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{--bg:#0b0d10;--card:#15191f;--line:#2b313a;--amber:#ffad22;--text:#f5f7fa;--muted:#9ba5b1;--green:#35d07f;--red:#ff6262}
@@ -21,7 +21,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .danger{border-color:#a33;background:#381516;color:#ffd5d5}.needsBag{border-left:5px solid #ffad22}
 </style></head>
 <body><div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v35</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span></div>
+<header><div class="brand"><b>🥒 Pickle v36</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span></div>
 <nav id="tabs">
 <button class="tab active" data-v="capacity">Capacity</button>
 <button class="tab" data-v="packing">Packing Breakdown</button>
@@ -54,7 +54,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
  <div class="card"><h3>Shipment detail</h3><div id="packingRows" class="scroll"></div></div>
 </section>
 <section class="view" id="upc">
- <div class="card"><h2>UPC Key · Walk & Map</h2><div class="muted">No buttons. Scan <b>SHELF</b> → scan <b>BAG</b> → pair saves automatically → move to the next product. If the SKU is not known yet, Pickle keeps the pair and resolves it after a Master Pick mapping PDF is imported.</div></div>
+ <div class="card"><h2>UPC Key · Walk & Map</h2><div class="muted">No buttons. Scan <b>SHELF</b> → scan <b>BAG</b> → pair saves automatically → move to the next product. Two scans always count as MATCHED, even when shelf and bag use the same UPC. Use NO BAG SEEN only when the bag cannot be found.</div></div>
  <div class="card"><input id="upcA" placeholder="1 · Scan shelf UPC" readonly><br><input id="upcB" placeholder="2 · Scan bag UPC" readonly><button id="noBagBtn" type="button" style="width:100%;margin-top:10px;padding:14px;font-weight:900;border-radius:12px">NO BAG SEEN / NO VEO UNA BOLSA</button><div id="pairState" class="small muted" style="margin-top:8px">READY — SCAN SHELF</div></div>
  <div class="card">
  <h3>UPC Key Tools</h3>
@@ -65,11 +65,11 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
  </div>
  <div class="small muted" style="margin-top:8px">Clear requires three confirmations. Product/SKU master and capacities are preserved.</div>
 </div>
-<div class="card"><h3>⚠ Needs a Bag Found <span class="pill" id="needsBagCount">0</span></h3>
+<div class="card"><h3>⚠ Unmatched · Needs a Bag Found <span class="pill" id="needsBagCount">0</span></h3>
  <div class="muted small">Shelf UPCs where you pressed “No Bag Seen.” When you later pair that shelf UPC with a bag, it disappears from this list automatically.</div>
  <div id="needsBagList" class="scroll"></div>
 </div>
-<div class="card"><h3>Known UPC mappings</h3><div id="upcList" class="scroll"></div></div>
+<div class="card"><h3>✓ Matched Shelf ↔ Bag <span class="pill" id="matchedPairCount">0</span></h3><div class="muted small">Two scans = matched. Scanning the same UPC twice is valid.</div><div id="matchedPairList" class="scroll"></div></div><div class="card"><h3>Known UPC mappings</h3><div id="upcList" class="scroll"></div></div>
 </section>
 <section class="view" id="master">
  <div class="card"><h2>SKU Master</h2><div class="muted">Built from the master pick list and supplied planogram SKU sections. The master pick list supplies SKU↔UPC product identity; planograms supply section classification.</div><input id="masterSearch" placeholder="Search master"></div>
@@ -126,11 +126,13 @@ function handleScan(raw){
      if($('pairState'))$('pairState').textContent='SHELF CAPTURED — SCAN BAG';
      flash('SHELF SAVED — SCAN BAG');
    }else{
-     let a=norm($('upcA').value),b=code;$('upcB').value=b;
-     let pa=resolve(a),pb=resolve(b),p=pa||pb;
-     if(p){addUpc(p.sku,a);addUpc(p.sku,b);S.noBagSeen=(S.noBagSeen||[]).filter(x=>norm(x.shelf)!==a);flash('LINKED — SCAN NEXT SHELF')}
-     else{S.pendingPairs.push({a,b,at:new Date().toISOString()});flash('PAIR SAVED — SCAN NEXT SHELF')}
-     save();
+     let a=norm($('upcA').value),b=norm(code);$('upcB').value=b;
+     let p=resolve(a)||resolve(b);
+     S.matchedPairs=S.matchedPairs||[];
+     S.matchedPairs.push({shelf:a,bag:b,same:a===b,sku:p?.sku||null,description:p?.description||null,at:new Date().toISOString()});
+     if(p){addUpc(p.sku,a);addUpc(p.sku,b)}else if(a!==b){S.pendingPairs.push({a,b,at:new Date().toISOString()})}
+     S.noBagSeen=(S.noBagSeen||[]).filter(x=>norm(x.shelf)!==a);
+     flash(a===b?'MATCHED — SAME UPC ✓':'MATCHED — UPC PAIR ✓');save();
      if($('pairState'))$('pairState').textContent=p?'LINKED ✓ — READY FOR NEXT SHELF':'PAIR SAVED ✓ — READY FOR NEXT SHELF';
      setTimeout(()=>{$('upcA').value='';$('upcB').value='';if($('pairState'))$('pairState').textContent='READY — SCAN SHELF'},350);
      render();
@@ -161,7 +163,7 @@ $('capacitySearch').addEventListener('input',renderCapacitySearch);
 function renderUpcs(){
  let rows=[];for(const p of Object.values(S.products))if((p.upcs||[]).length)rows.push(`<div class="item"><b>${p.description}</b><div class="small">SKU ${p.sku}: ${(p.upcs||[]).join(' ↔ ')}</div></div>`);$('upcList').innerHTML=rows.slice(0,500).join('');
  let needs=(S.noBagSeen||[]).slice().reverse();
- $('needsBagCount').textContent=needs.length;
+ $('needsBagCount').textContent=needs.length;let mp=(S.matchedPairs||[]).slice().reverse();if($('matchedPairCount'))$('matchedPairCount').textContent=mp.length;if($('matchedPairList'))$('matchedPairList').innerHTML=mp.slice(0,200).map(x=>`<div class="item"><b>${x.description||'Matched UPC pair'}</b><div class="small">${x.shelf} ↔ ${x.bag}${x.same?' · SAME UPC':''}${x.sku?` · SKU ${x.sku}`:''}</div></div>`).join('')||'<div class="item muted">No matched pairs yet.</div>';
  $('needsBagList').innerHTML=needs.length?needs.map(x=>`<div class="item needsBag"><b>${x.description||'Bag still unidentified'}</b><div class="small">Shelf UPC <b>${x.shelf}</b>${x.sku?` · SKU ${x.sku}`:''}${x.section?` · ${x.section}`:''}</div><div class="small muted">Needs bag barcode found</div></div>`).join(''):'<div class="item muted">Nothing outstanding — every marked shelf has a bag pair.</div>';
 }
 async function pdfText(file){let buf=await file.arrayBuffer(),pdf=await pdfjsLib.getDocument({data:buf}).promise,out='';for(let i=1;i<=pdf.numPages;i++){let pg=await pdf.getPage(i),tc=await pg.getTextContent();out+=tc.items.map(x=>x.str).join(' ')+'\n'}return out}
@@ -242,7 +244,8 @@ function rackGroupFor(p){
  if(sec==='bird'||/CHICK|POULTRY|LAYER|MEATBIRD|GAMEBIRD|TURKEY|DUCK/.test(d))return {order:63,label:'LIVESTOCK · CHICKEN / POULTRY',kind:'livestock'};
  return {order:90,label:'OTHER / UNMAPPED',kind:'other'}
 }
-function renderRack(){let rows=(S.pick?.rows||[]).filter(r=>r.remaining>0),groups={};for(const r of rows){let p=S.products[r.sku]||r,g=rackGroupFor(p),k=`${g.order}|${g.label}`;(groups[k]??={...g,rows:[]}).rows.push(r)}let ordered=Object.values(groups).sort((a,b)=>a.order-b.order||a.label.localeCompare(b.label));$('rackList').innerHTML=ordered.map(g=>`<div class="card rackGroup ${g.kind}"><div class="row"><h3 class="grow">${g.label}</h3><span class="pill">${g.rows.reduce((a,r)=>a+r.remaining,0)} BAGS</span></div>${g.rows.sort((a,b)=>b.remaining-a.remaining).map(r=>{let p=S.products[r.sku]||r;return `<button class="rackItem" onclick="openPickSku('${r.sku}')"><span class="rackDesc">${p.description||r.description}</span><span class="rackSku">SKU ${r.sku}</span><span class="rackQty">${r.remaining}</span></button>`}).join('')}</div>`).join('')||'<div class="card muted">Upload a pick list first.</div>'}
+function rackQty(r){let rem=Number(r.remaining),q=Number(r.qty);if(Number.isFinite(rem)&&rem>=0&&rem<10000)return rem;if(Number.isFinite(q)&&q>=0&&q<10000)return q;return 0}
+function renderRack(){let rows=(S.pick?.rows||[]).filter(r=>rackQty(r)>0),groups={};for(const r of rows){let p=S.products[r.sku]||r,g=rackGroupFor(p),k=`${g.order}|${g.label}`;(groups[k]??={...g,rows:[]}).rows.push(r)}let ordered=Object.values(groups).sort((a,b)=>a.order-b.order||a.label.localeCompare(b.label));$('rackList').innerHTML=ordered.map(g=>`<div class="card rackGroup ${g.kind}"><div class="row"><h3 class="grow">${g.label}</h3><span class="pill">${g.rows.reduce((a,r)=>a+rackQty(r),0)} BAGS</span></div>${g.rows.sort((a,b)=>rackQty(b)-rackQty(a)).map(r=>{let p=S.products[r.sku]||r;return `<button class="rackItem" onclick="openPickSku('${r.sku}')"><span class="rackDesc">${p.description||r.description}</span><span class="rackSku">SKU ${r.sku}</span><span class="rackQty">${rackQty(r)}</span></button>`}).join('')}</div>`).join('')||'<div class="card muted">Upload a pick list first.</div>'}
 
 function parsePacking(t){let lines=t.split(/\n/).map(x=>x.trim()).filter(Boolean),out=[];for(let i=0;i<lines.length-2;i++){if(/^\d{7}$/.test(lines[i])&&!isNaN(+lines[i+2]))out.push({sku:lines[i],description:lines[i+1],shipped:+lines[i+2]})}if(out.length)return out;let re=/(\d{7})\s+(.+?)\s+(\d+(?:\.\d+)?)(?=\s+\d{7}|$)/gs,m;while((m=re.exec(t)))out.push({sku:m[1],description:m[2].trim(),shipped:+m[3]});return out}
 $('packingFile').onchange=async e=>{let f=e.target.files[0];if(!f)return;let t=await pdfText(f),rows=parsePacking(t);for(const r of rows){let p=S.products[r.sku]||(S.products[r.sku]={sku:r.sku,description:r.description,section:'freight',upcs:[]});if(!p.description)p.description=r.description}S.packing={name:f.name,rows};save();render();alert(`Loaded ${rows.length} packing-list rows`)};
@@ -315,6 +318,7 @@ $('clearUpcKey').onclick=()=>{
  S.aliases={};
  for(const p of Object.values(S.products))p.upcs=[];
  S.pendingPairs=[];
+ S.matchedPairs=[];
  S.noBagSeen=[];
  save();render();flash('UPC KEY CLEARED');
  alert('UPC key cleared. SKU Master and capacities were preserved.');
