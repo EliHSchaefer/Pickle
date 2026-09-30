@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Pickle v36 · Rack + UPC Fix</title>
+<title>Pickle v37 · Fresh Start</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{--bg:#0b0d10;--card:#15191f;--line:#2b313a;--amber:#ffad22;--text:#f5f7fa;--muted:#9ba5b1;--green:#35d07f;--red:#ff6262}
@@ -21,7 +21,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .danger{border-color:#a33;background:#381516;color:#ffd5d5}.needsBag{border-left:5px solid #ffad22}
 </style></head>
 <body><div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v36</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span></div>
+<header><div class="brand"><b>🥒 Pickle v37</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span></div>
 <nav id="tabs">
 <button class="tab active" data-v="capacity">Capacity</button>
 <button class="tab" data-v="packing">Packing Breakdown</button>
@@ -30,6 +30,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 <button class="tab" data-v="backup">Import / Export</button>
 <button class="tab" data-v="rack">Rack Mode</button>
 <button class="tab" data-v="pick">Pick List Upload</button>
+<button class="tab" data-v="fresh">Fresh Start</button>
 </nav></header><main>
 <section class="view" id="mapping">
  <div class="card"><h2>UPC → SKU Mapping PDF</h2>
@@ -85,6 +86,28 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 <section class="view" id="pick">
  <div class="card"><h2>Pick List Upload</h2><input id="pickFile" type="file" accept=".pdf"><div class="muted small" style="margin-top:7px">Upload is optional. Capacity and packing modes work without it.</div></div>
  <div class="card"><div class="grid"><div class="stat"><span>Items</span><b id="pickItems">0</b></div><div class="stat"><span>Remaining bags</span><b id="pickRemain">0</b></div></div></div><div class="card"><div id="pickRows"></div></div>
+</section>
+
+<section class="view" id="fresh">
+ <div class="card">
+  <h2>Fresh Start</h2>
+  <div class="muted">Start a new freight/capacity cycle without touching the UPC Key or SKU Master.</div>
+ </div>
+ <div class="card">
+  <h3>Clear Capacity Data</h3>
+  <div class="muted small">Removes recorded capacities only. UPC mappings and product knowledge stay intact.</div>
+  <button id="clearCapacityFresh" class="danger" style="width:100%;margin-top:10px;padding:15px;font-weight:900">CLEAR CAPACITIES</button>
+ </div>
+ <div class="card">
+  <h3>Clear Packing List</h3>
+  <div class="muted small">Removes the current inbound/packing-list session only.</div>
+  <button id="clearPackingFresh" class="danger" style="width:100%;margin-top:10px;padding:15px;font-weight:900">CLEAR PACKING LIST</button>
+ </div>
+ <div class="card">
+  <h3>Fresh Start · Both</h3>
+  <div class="muted small">Clears capacities and the current packing list together. UPC Key, SKU Master, matched UPC pairs, and product knowledge are preserved.</div>
+  <button id="clearBothFresh" class="danger" style="width:100%;margin-top:10px;padding:15px;font-weight:900">CLEAR BOTH / NEW CYCLE</button>
+ </div>
 </section>
 </main>
 <div class="modal" id="amountModal"><button class="close" id="closeModal">✕ CLOSE</button><div class="sub" id="modalMode"></div><h1 id="modalName">Product</h1><div id="modalMeta"></div><div class="big" id="modalPrompt"></div><div class="numbers" id="numbers"></div><div class="row"><input id="otherAmt" type="number" inputmode="numeric" placeholder="Other amount"><button id="saveOther">SAVE</button></div></div>
@@ -160,6 +183,38 @@ function productHasUpc(p){if(p.upcs&&p.upcs.length)return true;return Object.ent
 function renderCapacitySearch(){let box=$('capacitySearchResults'),inp=$('capacitySearch');if(!box||!inp)return;let q=(inp.value||'').trim().toUpperCase();if(!q){box.innerHTML='';return}let hits=Object.values(S.products).filter(p=>`${p.sku||''} ${p.description||''}`.toUpperCase().includes(q)).slice(0,30);box.innerHTML=hits.map(p=>{let has=productHasUpc(p),cap=S.capacities[p.sku];return `<button class="rackItem" type="button" onclick="openCapacityFromSearch('${p.sku}')"><span class="rackDesc">${p.description||'Unknown product'}${has?'':' <span class="warn">· NO UPC</span>'}</span><span class="rackSku">SKU ${p.sku} · ${has?'UPC mapped':'NAME SEARCH ONLY'}</span><span class="rackQty">${cap??'+'}</span></button>`}).join('')||'<div class="small warn" style="margin-top:10px">No matching product.</div>'}
 function openCapacityFromSearch(sku){let p=S.products[sku];if(!p)return;try{document.activeElement?.blur()}catch(e){}openAmount('capacity',p)}
 $('capacitySearch').addEventListener('input',renderCapacitySearch);
+
+function tripleConfirmFresh(a,b,c){
+ if(!confirm(a))return false;
+ if(!confirm(b))return false;
+ if(!confirm(c))return false;
+ return true;
+}
+function clearCapacityData(){
+ S.capacities={};
+}
+function clearPackingData(){
+ // Clear only temporary inbound/packing-session data.
+ if('packing' in S)S.packing=[];
+ if('packingRows' in S)S.packingRows=[];
+ if('packRows' in S)S.packRows=[];
+ if('packingText' in S)S.packingText='';
+ if('packingName' in S)S.packingName='';
+ if('packName' in S)S.packName='';
+ if('packingMeta' in S)S.packingMeta=null;
+}
+$('clearCapacityFresh').onclick=()=>{
+ if(!tripleConfirmFresh('You sure? Clear ALL recorded capacities?','You really sure? UPC Key and SKU Master will stay.','You REALLY REALLY sure? Capacities will be reset for a fresh cycle.'))return;
+ clearCapacityData();save();render();flash('CAPACITIES CLEARED');alert('Capacities cleared. UPC Key and SKU Master preserved.');
+};
+$('clearPackingFresh').onclick=()=>{
+ if(!tripleConfirmFresh('You sure? Clear the current packing list?','You really sure? This removes the current inbound session.','You REALLY REALLY sure? Last chance before the packing list is cleared.'))return;
+ clearPackingData();save();render();flash('PACKING LIST CLEARED');alert('Packing list cleared. Permanent product data preserved.');
+};
+$('clearBothFresh').onclick=()=>{
+ if(!tripleConfirmFresh('You sure? Start a fresh capacity + packing cycle?','You really sure? Current capacities AND packing list will be cleared.','You REALLY REALLY sure? UPC Key and SKU Master stay, but this cycle data will reset.'))return;
+ clearCapacityData();clearPackingData();save();render();flash('FRESH CYCLE READY');alert('Fresh cycle ready. UPC Key and SKU Master preserved.');
+};
 function renderUpcs(){
  let rows=[];for(const p of Object.values(S.products))if((p.upcs||[]).length)rows.push(`<div class="item"><b>${p.description}</b><div class="small">SKU ${p.sku}: ${(p.upcs||[]).join(' ↔ ')}</div></div>`);$('upcList').innerHTML=rows.slice(0,500).join('');
  let needs=(S.noBagSeen||[]).slice().reverse();
