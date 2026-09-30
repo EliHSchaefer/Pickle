@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Pickle v37 · Fresh Start</title>
+<title>Pickle v38 · Planogram SKU Map</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{--bg:#0b0d10;--card:#15191f;--line:#2b313a;--amber:#ffad22;--text:#f5f7fa;--muted:#9ba5b1;--green:#35d07f;--red:#ff6262}
@@ -21,7 +21,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .danger{border-color:#a33;background:#381516;color:#ffd5d5}.needsBag{border-left:5px solid #ffad22}
 </style></head>
 <body><div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v37</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span></div>
+<header><div class="brand"><b>🥒 Pickle v38</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span></div>
 <nav id="tabs">
 <button class="tab active" data-v="capacity">Capacity</button>
 <button class="tab" data-v="packing">Packing Breakdown</button>
@@ -30,6 +30,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 <button class="tab" data-v="backup">Import / Export</button>
 <button class="tab" data-v="rack">Rack Mode</button>
 <button class="tab" data-v="pick">Pick List Upload</button>
+<button class="tab" data-v="planograms">Planogram Map</button>
 <button class="tab" data-v="fresh">Fresh Start</button>
 </nav></header><main>
 <section class="view" id="mapping">
@@ -51,6 +52,9 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 <div class="card"><h3>What can actually go to the floor?</h3>
 <div class="muted small">For each incoming SKU: FLOOR = min(shipped bags, recorded empty shelf capacity). OVERSTOCK = shipped − FLOOR. Unknown capacity is kept separate and never guessed.</div>
 <div id="shelfFit"></div></div>
+<div class="card"><h3>Whole-truck distribution by planogram filename</h3>
+<div class="muted small">Uses uploaded planogram PDF filenames as categories. Percentages are based on inbound quantity from the packing list; unmapped SKUs stay visible instead of being guessed.</div>
+<div id="wholeTruckBreakdown"></div></div>
 <div class="card"><h3>Planogram / aisle distribution</h3><div class="muted small">Based on SKU→planogram mapping. Pounds use encoded bag weights; unknown weights are never guessed.</div><div id="aisleBreakdown"></div></div><div class="card"><h3>Brand distribution by aisle</h3><div id="brandBreakdown"></div></div>
  <div class="card"><h3>Shipment detail</h3><div id="packingRows" class="scroll"></div></div>
 </section>
@@ -88,6 +92,21 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
  <div class="card"><div class="grid"><div class="stat"><span>Items</span><b id="pickItems">0</b></div><div class="stat"><span>Remaining bags</span><b id="pickRemain">0</b></div></div></div><div class="card"><div id="pickRows"></div></div>
 </section>
 
+<section class="view" id="planograms">
+ <div class="card"><h2>Planogram → SKU Map</h2>
+ <div class="muted">Upload planogram PDFs in bulk. <b>The PDF filename is the category name.</b> Pickle extracts the 7-digit SKUs from planogram SKU rows and permanently maps those SKUs to that filename.</div>
+ <input id="planogramFiles" type="file" accept=".pdf" multiple>
+ <div class="small muted" style="margin-top:8px">Example: <b>Dog Toys.pdf</b> → category <b>Dog Toys</b>. Re-uploading a newer file updates that category. Existing UPCs, capacities and SKU Master data are preserved.</div>
+ <div id="planogramImportStatus" class="small muted" style="margin-top:8px">No planograms imported this session.</div></div>
+ <div class="card"><div class="grid">
+  <div class="stat"><span>Planogram files</span><b id="pgFileCount">0</b></div>
+  <div class="stat"><span>Mapped SKUs</span><b id="pgSkuCount">0</b></div>
+  <div class="stat"><span>Inbound mapped</span><b id="pgInboundMapped">—</b></div>
+  <div class="stat"><span>Inbound unmapped</span><b id="pgInboundUnmapped">—</b></div>
+ </div></div>
+ <div class="card"><h3>Imported planograms</h3><div id="planogramList" class="scroll"></div></div>
+ <div class="card"><h3>Unmapped inbound SKUs</h3><div class="muted small">These are packing-list SKUs that are not present in any uploaded planogram.</div><div id="planogramUnmapped" class="scroll"></div></div>
+</section>
 <section class="view" id="fresh">
  <div class="card">
   <h2>Fresh Start</h2>
@@ -117,7 +136,7 @@ const KEY='pickleLiteV1';
 let S={capacities:{},aliases:{},products:{},pick:null,packing:null,mappingMeta:null};
 for(const p of BOOT.catalog) S.products[p.sku]={...p,upcs:p.upc?[String(p.upc)]:[]};
 function load(){try{const x=JSON.parse(localStorage.getItem(KEY)||'null');if(x){S={...S,...x}; for(const p of BOOT.catalog){S.products[p.sku]={...p,...(S.products[p.sku]||{}),upcs:[...new Set([...(p.upc?[String(p.upc)]:[]),...((S.products[p.sku]||{}).upcs||[])])]}}}}catch(e){}}
-function ensureV30(){S.mappingMeta=S.mappingMeta||null}ensureV30();
+function ensureV30(){S.mappingMeta=S.mappingMeta||null;S.planograms=S.planograms||{};S.planogramSkuMap=S.planogramSkuMap||{}}ensureV30();
 function save(){localStorage.setItem(KEY,JSON.stringify(S))}
 load();
 const $=id=>document.getElementById(id), norm=x=>String(x||'').replace(/\D/g,'').replace(/^0+(?=\d)/,'');
@@ -170,7 +189,7 @@ function handleScan(raw){
 function openAmount(mode,p,row=null){modalCtx={mode,p,row};$('modalMode').textContent=mode==='pick'?'PICK LIST · LOG BAGS PICKED':'CAPACITY · UPDATE HOW MANY FIT';$('modalName').textContent=p.description||p.sku;$('modalMeta').innerHTML=`SKU ${p.sku} · ${(p.upcs||[]).join(' / ')||'UPC unknown'} · ${p.section||'unknown'}`;$('modalPrompt').textContent=mode==='pick'?`Remaining: ${row.remaining}`:`Current capacity: ${S.capacities[p.sku]??'NOT SET'}`;let n=$('numbers');n.innerHTML='';for(let i=0;i<=12;i++){let b=document.createElement('button');b.className='num';b.textContent=i;b.onclick=()=>commitAmount(i);n.appendChild(b)}$('amountModal').classList.add('show')}
 function commitAmount(n){n=+n;if(modalCtx.mode==='capacity')S.capacities[modalCtx.p.sku]=n;else{modalCtx.row.picked=(modalCtx.row.picked||0)+n;modalCtx.row.remaining=Math.max(0,modalCtx.row.qty-modalCtx.row.picked)}save();$('amountModal').classList.remove('show');try{document.activeElement?.blur()}catch(e){}$('manualScan').value='';render();flash('READY — SCAN NEXT BAG')}
 $('closeModal').onclick=()=> $('amountModal').classList.remove('show');$('saveOther').onclick=()=>commitAmount($('otherAmt').value||0);
-function render(){renderCapacitySearch();renderMapping();renderStats();renderCaps();renderMaster();renderUpcs();renderPick();renderRack();renderPacking()}
+function render(){renderPlanograms();renderCapacitySearch();renderMapping();renderStats();renderCaps();renderMaster();renderUpcs();renderPick();renderRack();renderPacking()}
 function renderStats(){$('capCount').textContent=Object.keys(S.capacities).length;$('upcCount').textContent=Object.keys(S.aliases).length;$('masterCount').textContent=Object.keys(S.products).length}
 function itemHtml(p,extra=''){return `<div class="item section-${p.section||'unknown'}"><b>${p.description||p.sku}</b><div class="small muted">SKU ${p.sku} · ${(p.upcs||[]).join(' / ')||'UPC ?'} · ${p.section||'unknown'} ${extra}</div></div>`}
 function renderCaps(){let q=($('capSearch')?.value||'').toUpperCase();let arr=Object.entries(S.capacities).map(([sku,cap])=>[S.products[sku]||{sku,description:sku},cap]).filter(([p])=>(p.description+p.sku+(p.upcs||[]).join()).toUpperCase().includes(q));$('capList').innerHTML=arr.length?arr.map(([p,c])=>itemHtml(p,`· CAPACITY <b>${c}</b>`)).join(''):'<div class="item muted">No capacities recorded yet. Scan a bag.</div>'}
@@ -302,6 +321,56 @@ function rackGroupFor(p){
 function rackQty(r){let rem=Number(r.remaining),q=Number(r.qty);if(Number.isFinite(rem)&&rem>=0&&rem<10000)return rem;if(Number.isFinite(q)&&q>=0&&q<10000)return q;return 0}
 function renderRack(){let rows=(S.pick?.rows||[]).filter(r=>rackQty(r)>0),groups={};for(const r of rows){let p=S.products[r.sku]||r,g=rackGroupFor(p),k=`${g.order}|${g.label}`;(groups[k]??={...g,rows:[]}).rows.push(r)}let ordered=Object.values(groups).sort((a,b)=>a.order-b.order||a.label.localeCompare(b.label));$('rackList').innerHTML=ordered.map(g=>`<div class="card rackGroup ${g.kind}"><div class="row"><h3 class="grow">${g.label}</h3><span class="pill">${g.rows.reduce((a,r)=>a+rackQty(r),0)} BAGS</span></div>${g.rows.sort((a,b)=>rackQty(b)-rackQty(a)).map(r=>{let p=S.products[r.sku]||r;return `<button class="rackItem" onclick="openPickSku('${r.sku}')"><span class="rackDesc">${p.description||r.description}</span><span class="rackSku">SKU ${r.sku}</span><span class="rackQty">${rackQty(r)}</span></button>`}).join('')}</div>`).join('')||'<div class="card muted">Upload a pick list first.</div>'}
 
+
+function cleanPlanogramTitle(name=''){return name.replace(/\.pdf$/i,'').replace(/\(\d+\)\s*$/,'').trim()}
+function parsePlanogramSkus(t){
+ let lines=t.split(/\n/).map(x=>x.trim()).filter(Boolean),found=new Map();
+ // PDF.js text extraction can flatten spacing, so accept only rows that begin Seq + 7-digit SKU.
+ for(const line of lines){
+   let m=line.match(/^\s*(\d{1,3})\s+(\d{7})\s+(.+?)(?:\s+-?\d+(?:\.\d+)?)?\s*$/);
+   if(m){
+     let sku=m[2],desc=m[3].replace(/\s+-?\d+(?:\.\d+)?\s*$/,'').trim();
+     if(desc && !/^(SKU|FIX:|Planogram|Segment:|Page:)/i.test(desc))found.set(sku,desc);
+   }
+ }
+ // Fallback for flattened text: use occurrences following SKU Description headers.
+ if(!found.size){
+   let re=/(?:^|\s)(\d{1,3})\s+(\d{7})\s+([A-Z0-9][A-Z0-9&'./%+\- ]{2,80}?)(?=\s+-?\d+(?:\.\d+)?(?:\s|$))/g,m;
+   while((m=re.exec(t)))found.set(m[2],m[3].trim());
+ }
+ return [...found].map(([sku,description])=>({sku,description}));
+}
+$('planogramFiles').onchange=async e=>{
+ let files=[...e.target.files];if(!files.length)return;
+ let total=0,msg=[];
+ for(const f of files){
+   let text=await pdfText(f),rows=parsePlanogramSkus(text),title=cleanPlanogramTitle(f.name);
+   // Remove stale mappings from an older upload of the same filename/category.
+   let old=S.planograms[title];
+   if(old)for(const sku of old.skus||[])if(S.planogramSkuMap[sku]===title)delete S.planogramSkuMap[sku];
+   S.planograms[title]={title,fileName:f.name,skus:rows.map(r=>r.sku),count:rows.length,imported:new Date().toISOString()};
+   for(const r of rows){
+     S.planogramSkuMap[r.sku]=title;
+     let p=S.products[r.sku]||(S.products[r.sku]={sku:r.sku,description:r.description||'Unknown product',section:'unknown',upcs:[]});
+     if((!p.description||p.description.startsWith('Unknown'))&&r.description)p.description=r.description;
+     p.planogram=title;
+   }
+   total+=rows.length;msg.push(`${title}: ${rows.length} SKUs`);
+ }
+ save();render();e.target.value='';
+ $('planogramImportStatus').innerHTML=`Imported <b>${files.length}</b> planogram PDFs · <b>${total}</b> SKU placements<br>${msg.join(' · ')}`;
+};
+function renderPlanograms(){
+ let pgs=Object.values(S.planograms||{}).sort((a,b)=>a.title.localeCompare(b.title));
+ let mapped=Object.keys(S.planogramSkuMap||{}).length;
+ if($('pgFileCount'))$('pgFileCount').textContent=pgs.length;
+ if($('pgSkuCount'))$('pgSkuCount').textContent=mapped;
+ if($('planogramList'))$('planogramList').innerHTML=pgs.map(p=>`<div class="item"><b>${p.title}</b><div class="small">${p.count||p.skus?.length||0} SKUs · ${p.fileName||''}</div></div>`).join('')||'<div class="item muted">No planograms uploaded yet.</div>';
+ let rows=S.packing?.rows||[],un=rows.filter(r=>!S.planogramSkuMap?.[r.sku]),ma=rows.length-un.length;
+ if($('pgInboundMapped'))$('pgInboundMapped').textContent=rows.length?`${ma}/${rows.length}`:'—';
+ if($('pgInboundUnmapped'))$('pgInboundUnmapped').textContent=rows.length?un.length:'—';
+ if($('planogramUnmapped'))$('planogramUnmapped').innerHTML=un.map(r=>`<div class="item"><b>${r.description||'Unknown'}</b><div class="small">SKU ${r.sku} · inbound ${r.shipped}</div></div>`).join('')||'<div class="item muted">No unmapped inbound SKUs.</div>';
+}
 function parsePacking(t){let lines=t.split(/\n/).map(x=>x.trim()).filter(Boolean),out=[];for(let i=0;i<lines.length-2;i++){if(/^\d{7}$/.test(lines[i])&&!isNaN(+lines[i+2]))out.push({sku:lines[i],description:lines[i+1],shipped:+lines[i+2]})}if(out.length)return out;let re=/(\d{7})\s+(.+?)\s+(\d+(?:\.\d+)?)(?=\s+\d{7}|$)/gs,m;while((m=re.exec(t)))out.push({sku:m[1],description:m[2].trim(),shipped:+m[3]});return out}
 $('packingFile').onchange=async e=>{let f=e.target.files[0];if(!f)return;let t=await pdfText(f),rows=parsePacking(t);for(const r of rows){let p=S.products[r.sku]||(S.products[r.sku]={sku:r.sku,description:r.description,section:'freight',upcs:[]});if(!p.description)p.description=r.description}S.packing={name:f.name,rows};save();render();alert(`Loaded ${rows.length} packing-list rows`)};
 function zoneOf(p){
@@ -322,9 +391,17 @@ function zoneOf(p){
  }
  return 'Other / Unmapped';
 }
-function packCalc(r){let p=S.products[r.sku]||{sku:r.sku,description:r.description,section:'freight'},w=weightOf(p.description||r.description),sec=p.section||'freight',cap=S.capacities[r.sku],floor=cap==null?null:Math.min(r.shipped,cap),over=floor==null?null:Math.max(0,r.shipped-floor);return {...r,p,w,sec,zone:zoneOf(p),cap,floor,over,pounds:w!=null?r.shipped*w:null,floorPounds:(w!=null&&floor!=null)?floor*w:null,overPounds:(w!=null&&over!=null)?over*w:null,brand:brandOf(p.description||r.description)}}
+function packCalc(r){let p=S.products[r.sku]||{sku:r.sku,description:r.description,section:'freight'},w=weightOf(p.description||r.description),sec=p.section||'freight',planogram=S.planogramSkuMap?.[r.sku]||p.planogram||null,cap=S.capacities[r.sku],floor=cap==null?null:Math.min(r.shipped,cap),over=floor==null?null:Math.max(0,r.shipped-floor);return {...r,p,w,sec,planogram,zone:zoneOf(p),cap,floor,over,pounds:w!=null?r.shipped*w:null,floorPounds:(w!=null&&floor!=null)?floor*w:null,overPounds:(w!=null&&over!=null)?over*w:null,brand:brandOf(p.description||r.description)}}
 function aisleLabel(sec){return ({dog:'Dog Food',cat:'Cat Food',bird:'Chicken / Poultry',livestock:'Cattle & Livestock',equine:'Equine',freight:'Other / Unmapped',unknown:'Unknown'})[sec]||sec}
-function renderPacking(){let rows=(S.packing?.rows||[]).map(packCalc);if(!rows.length){$('packingSummary').innerHTML='<div class="card muted">No packing list loaded.</div>';$('shelfFit').innerHTML='';$('aisleBreakdown').innerHTML='';$('brandBreakdown').innerHTML='';$('packingRows').innerHTML='';return}let feed=rows.filter(x=>['dog','livestock','equine','cat','bird'].includes(x.sec)),groups={};for(const x of feed){let g=groups[x.sec]??={bags:0,pounds:0,unknownBags:0,brands:{},weights:{}};g.bags+=x.shipped;if(x.w!=null){g.pounds+=x.pounds;g.weights[x.w]=(g.weights[x.w]||0)+x.shipped}else g.unknownBags+=x.shipped;let bn=BOOT.brandNames[x.brand]||x.brand,z=g.brands[bn]??={bags:0,pounds:0,unknown:0};z.bags+=x.shipped;if(x.pounds!=null)z.pounds+=x.pounds;else z.unknown+=x.shipped}let totalBags=Object.values(groups).reduce((a,g)=>a+g.bags,0),totalLb=Object.values(groups).reduce((a,g)=>a+g.pounds,0),capKnown=feed.filter(x=>x.cap!=null).length;
+function renderPacking(){let rows=(S.packing?.rows||[]).map(packCalc);if(!rows.length){$('packingSummary').innerHTML='<div class="card muted">No packing list loaded.</div>';$('shelfFit').innerHTML='';$('aisleBreakdown').innerHTML='';$('brandBreakdown').innerHTML='';$('packingRows').innerHTML='';if($('wholeTruckBreakdown'))$('wholeTruckBreakdown').innerHTML='';return}let truckGroups={};
+ for(const x of rows){let k=x.planogram||'UNMAPPED';let g=truckGroups[k]??={units:0,skus:0};g.units+=x.shipped;g.skus++}
+ let truckUnits=rows.reduce((a,x)=>a+x.shipped,0);
+ if($('wholeTruckBreakdown')){
+   $('wholeTruckBreakdown').innerHTML=`<table><tr><th>Planogram / category</th><th>Inbound qty</th><th>% of truck</th><th>SKUs</th></tr>${
+     Object.entries(truckGroups).sort((a,b)=>b[1].units-a[1].units).map(([name,g])=>`<tr><td><b>${name}</b></td><td>${g.units}</td><td>${truckUnits?(100*g.units/truckUnits).toFixed(1):'0.0'}%</td><td>${g.skus}</td></tr>`).join('')
+   }</table><div class="small muted">Truck % is quantity-based. It is not a pallet or labor estimate.</div>`;
+ }
+ let feed=rows.filter(x=>['dog','livestock','equine','cat','bird'].includes(x.sec)),groups={};for(const x of feed){let g=groups[x.sec]??={bags:0,pounds:0,unknownBags:0,brands:{},weights:{}};g.bags+=x.shipped;if(x.w!=null){g.pounds+=x.pounds;g.weights[x.w]=(g.weights[x.w]||0)+x.shipped}else g.unknownBags+=x.shipped;let bn=BOOT.brandNames[x.brand]||x.brand,z=g.brands[bn]??={bags:0,pounds:0,unknown:0};z.bags+=x.shipped;if(x.pounds!=null)z.pounds+=x.pounds;else z.unknown+=x.shipped}let totalBags=Object.values(groups).reduce((a,g)=>a+g.bags,0),totalLb=Object.values(groups).reduce((a,g)=>a+g.pounds,0),capKnown=feed.filter(x=>x.cap!=null).length;
  let zones={};
  for(const x of feed){
    let z=zones[x.zone]??={inbound:0,floor:0,over:0,unknown:0,inLb:0,floorLb:0,overLb:0,skus:0};
