@@ -19,9 +19,28 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .small{font-size:12px}.bar{height:9px;background:#252c35;border-radius:99px;overflow:hidden;margin:5px 0 9px}.bar>i{display:block;height:100%;background:#ffad22}.dist{margin:10px 0;padding:10px;border:1px solid #2b333d;border-radius:11px}.scroll{overflow:auto;max-height:60vh}.section-dog{border-left:4px solid #c78bff}.section-livestock,.section-equine{border-left:4px solid #65d0ff}.section-cat,.section-bird{border-left:4px solid #ffd166}
 .rackGroup{padding:10px}.rackGroup h3{font-size:18px;margin:0}.rackItem{position:relative;width:100%;display:grid;grid-template-columns:1fr 64px;grid-template-areas:"desc qty" "sku qty";text-align:left;background:#0f1318;border:1px solid #303843;margin-top:8px;padding:12px;border-radius:12px}.rackDesc{grid-area:desc;font-size:16px;font-weight:800;padding-right:8px}.rackSku{grid-area:sku;color:#8f9aa6;font-size:11px;margin-top:4px}.rackQty{grid-area:qty;align-self:center;justify-self:end;font-size:30px;font-weight:900;color:#ffad22}.rackGroup.dog{border-left:5px solid #c78bff}.rackGroup.cat{border-left:5px solid #65d0ff}.rackGroup.bird{border-left:5px solid #ffd166}.rackGroup.litter{border-left:5px solid #a8dadc}.rackGroup.livestock{border-left:5px solid #8fd694}
 .danger{border-color:#a33;background:#381516;color:#ffd5d5}.needsBag{border-left:5px solid #ffad22}.allocTabs{display:flex;gap:8px;overflow-x:auto;padding:2px 0 10px;white-space:nowrap;-webkit-overflow-scrolling:touch}.allocChip{flex:0 0 auto;padding:10px 13px;border-radius:999px;font-weight:900;background:#111820;border:1px solid #35404c}.allocChip.active{background:#ffad22;color:#111;border-color:#ffad22}.allocNote{margin-top:8px}.allocSku{margin-top:8px;border:1px solid #303843;border-radius:10px;background:#0f1318}.allocSku summary{cursor:pointer;padding:10px;font-weight:800}.allocSkuBody{padding:0 10px 10px}.good{color:#8fd694}
+.filterMode{display:flex;gap:8px;margin:10px 0;overflow-x:auto}.filterMode button.active{background:#ffad22;color:#111}.updateHero{border:2px solid #ffad22}.updateNav{display:grid;grid-template-columns:1fr 1fr;gap:8px}.countOpt{font-weight:900}.doneItem{opacity:.55}.scanTarget{outline:3px solid #ffad22}.backWork button{width:100%;margin-top:8px}
+#cameraScanBtn{background:#ffad22;color:#111;border:0;border-radius:11px;padding:10px 13px;font-weight:900;white-space:nowrap}
+#cameraOverlay{display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.96);padding:14px}
+#cameraOverlay.show{display:flex;flex-direction:column}
+#cameraTop{display:flex;align-items:center;justify-content:space-between;gap:10px;color:white;margin-bottom:10px}
+#cameraViewport{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:16px;background:#050505}
+#cameraVideo{width:100%;height:100%;object-fit:cover}
+#cameraGuide{position:absolute;width:min(88vw,620px);height:28%;border:3px solid #ffad22;border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,.18)}
+#cameraHint{position:absolute;bottom:18px;left:14px;right:14px;text-align:center;color:white;background:rgba(0,0,0,.65);padding:10px;border-radius:12px;font-weight:800}
+#cameraClose{padding:10px 14px;font-weight:900}
 </style></head>
-<body><div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v39</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span></div>
+<body>
+<div id="cameraOverlay">
+  <div id="cameraTop"><div><b>ONE-SHOT CAMERA SCAN</b><div class="small">Point at a UPC. Pickle stops the camera as soon as it reads one.</div></div><button id="cameraClose" type="button">CANCEL</button></div>
+  <div id="cameraViewport">
+    <video id="cameraVideo" playsinline muted></video>
+    <div id="cameraGuide"></div>
+    <div id="cameraHint">ALIGN THE BARCODE INSIDE THE BOX</div>
+  </div>
+</div>
+<div id="scanFlash">SCAN RECEIVED</div>
+<header><div class="brand"><b>🥒 Pickle v42</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button></div>
 <nav id="tabs">
 <button class="tab active" data-v="capacity">Capacity</button>
 <button class="tab" data-v="packing">Packing Breakdown</button>
@@ -41,7 +60,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
  <div id="mappingStatus" class="small muted" style="margin-top:8px">No mapping PDF loaded this session.</div></div>
  <div class="card"><h3>Mapping coverage</h3><div id="mappingStats"></div></div>
 </section>
-<section class="view active" id="capacity"><div class="card"><h3>Touch Bag Finder</h3><div class="muted small">No typing needed. Choose Animal → Brand → Weight → Bag. Each choice narrows the next menu using the Master SKU.</div><div class="touchFilters"><select id="animalFilter"><option value="">ANIMAL / TYPE</option></select><select id="brandFilter"><option value="">BRAND</option></select><select id="weightFilter"><option value="">WEIGHT</option></select><select id="productFilter"><option value="">BAG / PRODUCT</option></select></div><button id="openSelectedBag" class="productPick" style="width:100%;padding:15px;font-weight:900" disabled>OPEN SELECTED BAG</button><div id="selectedBagInfo" class="small muted" style="margin-top:8px"></div></div>
+<section class="view active" id="capacity"><div class="card"><h3>Touch Bag Finder</h3><div class="muted small">Scanner + touch only. Counts show how many relevant SKUs remain at each level.</div><div class="filterMode"><button id="finderNeed" class="active">NEEDS PICK</button><button id="finderAll">ALL / CAPACITY WALK</button></div><div class="touchFilters"><select id="animalFilter"><option value="">ANIMAL / TYPE</option></select><select id="brandFilter"><option value="">BRAND</option></select><select id="weightFilter"><option value="">WEIGHT</option></select><select id="productFilter"><option value="">BAG / PRODUCT</option></select></div><button id="openSelectedBag" class="productPick" style="width:100%;padding:15px;font-weight:900" disabled>OPEN SELECTED BAG</button><div id="selectedBagInfo" class="small muted" style="margin-top:8px"></div></div>
  <div class="card"><h2>Capacity Mode</h2><div class="muted">Bluetooth scanner is always listening. Scan bag → choose capacity → immediately scan the next bag. No need to tap the UPC field between scans.</div></div>
  <div class="card row"><input id="manualScan" class="grow" inputmode="numeric" placeholder="Optional manual UPC / SKU entry"><button class="primary" id="manualScanBtn">GO</button></div>
  <div class="card"><div class="grid"><div class="stat"><span>Known capacities</span><b id="capCount">0</b></div><div class="stat"><span>Known UPCs</span><b id="upcCount">0</b></div><div class="stat"><span>Master SKUs</span><b id="masterCount">0</b></div></div></div>
@@ -68,7 +87,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 </section>
 <section class="view" id="upc">
  <div class="card"><h2>UPC Key · Walk & Map</h2><div class="muted">No buttons. Scan <b>SHELF</b> → scan <b>BAG</b> → pair saves automatically → move to the next product. Two scans always count as MATCHED, even when shelf and bag use the same UPC. Use NO BAG SEEN only when the bag cannot be found.</div></div>
- <div class="card"><input id="upcA" placeholder="1 · Scan shelf UPC" readonly><br><input id="upcB" placeholder="2 · Scan bag UPC" readonly><button id="noBagBtn" type="button" style="width:100%;margin-top:10px;padding:14px;font-weight:900;border-radius:12px">NO BAG SEEN / NO VEO UNA BOLSA</button><div id="pairState" class="small muted" style="margin-top:8px">READY — SCAN SHELF</div></div>
+ <div class="card updateHero"><h3>UPC UPDATE LIST</h3><div class="muted small">Upload a Master SKU / Pick List update PDF. Rows with QTY 3+ become the scan queue. New uploads APPEND; duplicates update the existing SKU. In the back room, tap a product then scan the bag — Pickle links that bag UPC directly to the SKU.</div><input id="updateListFile" type="file" accept=".pdf"><div class="grid" style="margin-top:8px"><div class="stat"><span>To scan</span><b id="updateRemaining">0</b></div><div class="stat"><span>Completed</span><b id="updateDone">0</b></div></div><div class="touchFilters"><select id="updateAnimal"><option value="">ANIMAL / TYPE</option></select><select id="updateBrand"><option value="">BRAND</option></select><select id="updateWeight"><option value="">WEIGHT</option></select><select id="updateProduct"><option value="">BAG / PRODUCT</option></select></div><button id="startUpdateSelected" style="width:100%;padding:14px;font-weight:900">WORK SELECTED BAG</button><div id="updateCurrent" class="item" style="margin-top:8px">No update bag selected.</div><div class="updateNav"><button id="updatePrev">◀ PREV</button><button id="updateNext">NEXT ▶</button></div><div id="updateList" class="scroll" style="margin-top:8px"></div></div><div class="card"><input id="upcA" placeholder="1 · Scan shelf UPC" readonly><br><input id="upcB" placeholder="2 · Scan bag UPC" readonly><button id="noBagBtn" type="button" style="width:100%;margin-top:10px;padding:14px;font-weight:900;border-radius:12px">NO BAG SEEN / NO VEO UNA BOLSA</button><div id="pairState" class="small muted" style="margin-top:8px">READY — SCAN SHELF</div></div>
  <div class="card">
  <h3>UPC Key Tools</h3>
  <div class="grid">
@@ -79,7 +98,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
  <div class="small muted" style="margin-top:8px">Clear requires three confirmations. Product/SKU master and capacities are preserved.</div>
 </div>
 <div class="card"><h3>⚠ Unmatched · Needs a Bag Found <span class="pill" id="needsBagCount">0</span></h3>
- <div class="muted small">Shelf UPCs where you pressed “No Bag Seen.” When you later pair that shelf UPC with a bag, it disappears from this list automatically.</div>
+ <div class="muted small">Shelf UPCs where you pressed “No Bag Seen.” Tap one while you are at the overstock racks, then scan the bag. Pickle links the bag UPC to that SKU and removes it from this list.</div>
  <div id="needsBagList" class="scroll"></div>
 </div>
 <div class="card"><h3>✓ Matched Shelf ↔ Bag <span class="pill" id="matchedPairCount">0</span></h3><div class="muted small">Two scans = matched. Scanning the same UPC twice is valid.</div><div id="matchedPairList" class="scroll"></div></div><div class="card"><h3>Known UPC mappings</h3><div id="upcList" class="scroll"></div></div>
@@ -89,8 +108,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
  <div class="card"><div id="masterList" class="scroll"></div></div>
 </section>
 <section class="view" id="backup">
- <div class="card"><h2>Import / Export</h2><div class="muted">Back up the permanent UPC key, capacities and product knowledge separately from temporary pick/packing sessions.</div></div>
- <div class="card grid"><button id="exportJson" class="primary">EXPORT ALL JSON</button><button id="exportUpcCsv">EXPORT UPC KEY CSV</button><button id="exportCapCsv">EXPORT CAPACITY CSV</button><label class="btn">IMPORT JSON<input id="importJson" type="file" accept=".json" style="display:none"></label><label class="btn">IMPORT UPC CSV<input id="importUpc" type="file" accept=".csv,text/csv" style="display:none"></label></div>
+ <div class="card"><h2>Product Data · Import / Export</h2><div class="muted">Product Data = SKU Master + UPC Key + learned bag/shelf relationships. Export it as one portable JSON file and append/update it later without losing existing products.</div></div>
+ <div class="card grid"><button id="exportProductData" class="primary">EXPORT PRODUCT DATA JSON</button><label class="btn">IMPORT PRODUCT DATA JSON<input id="importProductData" type="file" accept=".json" style="display:none"></label><button id="exportJson">EXPORT ALL JSON</button><button id="exportUpcCsv">EXPORT UPC KEY CSV</button><button id="exportCapCsv">EXPORT CAPACITY CSV</button><label class="btn">IMPORT JSON<input id="importJson" type="file" accept=".json" style="display:none"></label><label class="btn">IMPORT UPC CSV<input id="importUpc" type="file" accept=".csv,text/csv" style="display:none"></label></div>
 </section>
 <section class="view" id="rack">
  <div class="card"><h2>Rack Mode</h2><div class="muted">Active pick list grouped by brand, highest remaining first. Scan still opens “amount picked.”</div></div><div id="rackList"></div>
@@ -171,6 +190,11 @@ function handleScan(raw){
  let v=activeView();
  if(v==='upc'){
    S.pendingPairs=S.pendingPairs||[];
+   // Back-room update/no-bag workflow: selected SKU + one bag scan.
+   if(S.updateTargetSku){
+     let sku=String(S.updateTargetSku),p=S.products[sku];
+     if(p){addUpc(sku,code);let u=(S.updateList||[]).find(x=>x.sku===sku);if(u){u.done=true;u.bagUpc=code;u.doneAt=new Date().toISOString()}S.noBagSeen=(S.noBagSeen||[]).filter(x=>String(x.sku)!==sku);S.updateTargetSku=null;save();flash('BAG UPC LINKED ✓');render();return}
+   }
    if(!$('upcA').value){
      $('upcA').value=code;$('upcB').value='';
      if($('pairState'))$('pairState').textContent='SHELF CAPTURED — SCAN BAG';
@@ -178,7 +202,7 @@ function handleScan(raw){
    }else{
      let a=norm($('upcA').value),b=norm(code);$('upcB').value=b;
      let p=resolve(a)||resolve(b);
-     S.matchedPairs=S.matchedPairs||[];
+     S.matchedPairs=S.matchedPairs||[];S.updateList=S.updateList||[];S.updateTargetSku=S.updateTargetSku||null;S.finderMode=S.finderMode||"need";
      S.matchedPairs.push({shelf:a,bag:b,same:a===b,sku:p?.sku||null,description:p?.description||null,at:new Date().toISOString()});
      if(p){addUpc(p.sku,a);addUpc(p.sku,b)}else if(a!==b){S.pendingPairs.push({a,b,at:new Date().toISOString()})}
      S.noBagSeen=(S.noBagSeen||[]).filter(x=>norm(x.shelf)!==a);
@@ -201,7 +225,7 @@ function setCapacityAndPick(n){n=+n;let sku=modalCtx.p.sku;S.capacityOriginal[sk
 function commitCapacityPick(n){n=+n;let sku=modalCtx.p.sku,remaining=+S.capacities[sku]||0,pick=Math.min(n,remaining);S.capacityPicked[sku]=(+S.capacityPicked[sku]||0)+pick;S.capacities[sku]=Math.max(0,remaining-pick);save();let left=S.capacities[sku];$('modalPrompt').innerHTML=left?`<span class="remainingHero">${left}</span> BAGS STILL NEEDED`:`<span class="remainingHero">FILLED ✓</span>`;$('stageTitle').textContent=left?'PICK MORE NOW, OR SCAN THE NEXT BAG':'CAPACITY FILLED';$('pickedNote').textContent=`Picked ${pick} now · ${S.capacityPicked[sku]} total picked this cycle · original need ${S.capacityOriginal[sku]}`;renderNumberButtons(left,x=>commitCapacityPick(x),true);render();flash(left?'CAPACITY UPDATED':'CAPACITY FILLED ✓')}
 function commitPickList(n){n=+n;modalCtx.row.picked=(modalCtx.row.picked||0)+n;modalCtx.row.remaining=Math.max(0,modalCtx.row.qty-modalCtx.row.picked);save();$('amountModal').classList.remove('show');render();flash('READY — SCAN NEXT BAG')}
 $('closeModal').onclick=()=> $('amountModal').classList.remove('show');
-function render(){renderPlanograms();renderTouchFinder();renderMapping();renderStats();renderCaps();renderMaster();renderUpcs();renderPick();renderRack();renderPacking();renderAllocation()}
+function render(){renderPlanograms();renderTouchFinder();renderMapping();renderStats();renderCaps();renderMaster();renderUpcs();renderUpdateList();renderPick();renderRack();renderPacking();renderAllocation()}
 function renderStats(){$('capCount').textContent=Object.keys(S.capacities).length;$('upcCount').textContent=Object.keys(S.aliases).length;$('masterCount').textContent=Object.keys(S.products).length}
 function itemHtml(p,extra=''){return `<div class="item section-${p.section||'unknown'}"><b>${p.description||p.sku}</b><div class="small muted">SKU ${p.sku} · ${(p.upcs||[]).join(' / ')||'UPC ?'} · ${p.section||'unknown'} ${extra}</div></div>`}
 function renderCaps(){let q=($('capSearch')?.value||'').toUpperCase();let arr=Object.entries(S.capacities).map(([sku,cap])=>[S.products[sku]||{sku,description:sku},cap]).filter(([p])=>(p.description+p.sku+(p.upcs||[]).join()).toUpperCase().includes(q));$('capList').innerHTML=arr.length?arr.map(([p,c])=>itemHtml(p,`· REMAINING <b>${c}</b>${S.capacityOriginal[p.sku]!=null?` · ORIGINAL ${S.capacityOriginal[p.sku]} · PICKED ${S.capacityPicked[p.sku]||0}`:''}`)).join(''):'<div class="item muted">No capacities recorded yet. Scan a bag.</div>'}
@@ -214,11 +238,14 @@ function productHasUpc(p){if(p.upcs&&p.upcs.length)return true;return Object.ent
 function animalTypeOf(p){let d=(p.description||'').toUpperCase(),sec=(p.section||'').toLowerCase();if(sec==='dog')return 'DOG';if(sec==='cat')return 'CAT';if(sec==='equine'||/HORSE|EQUINE|OMOLENE|ULTIUM|STRATEGY|SAFECHOICE|PROFORCE|TRIPLE CROWN|\bTC\b/.test(d))return 'EQUINE';if(sec==='bird')return 'CHICKEN / POULTRY';if(/WILD BIRD|SUNFLOWER|CARDINAL|FRUIT & NUT|NO WASTE|FARM MIX/.test(d))return 'WILD BIRD';if(/CAT LITTER|SCOOPABLE|TIDY CATS/.test(d))return 'CAT LITTER';if(/GOAT|SHEEP|CATTLE|CALF|HOG|PIG|RABBIT|DEER|LIVESTOCK/.test(d)||sec==='livestock')return 'CATTLE / LIVESTOCK';return (sec&&sec!=='unknown'&&sec!=='freight')?sec.toUpperCase():'OTHER'}
 function brandLabelOf(p){let k=brandOf(p.description||'');return BOOT.brandNames[k]||k||'UNKNOWN'}
 function productNameOf(p){let d=(p.description||'').trim();let brand=brandOf(d);if(brand&&d.toUpperCase().startsWith(brand+' '))d=d.slice(brand.length).trim();d=d.replace(/\b\d+(?:\.\d+)?\s*LB\b/ig,'').replace(/\s{2,}/g,' ').trim();return d||p.description||p.sku}
-function finderProducts(){return Object.values(S.products).filter(p=>p&&p.sku&&!String(p.sku).startsWith('UPC:'))}
-function setSelectOptions(el,vals,label,current=''){let uniq=[...new Set(vals.filter(v=>v!==null&&v!==undefined&&String(v).trim()!==''))].sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true}));el.innerHTML=`<option value="">${label}</option>`+uniq.map(v=>`<option value="${String(v).replaceAll('&','&amp;').replaceAll('"','&quot;')}">${v}</option>`).join('');if(uniq.map(String).includes(String(current)))el.value=current}
+function finderProducts(){let all=Object.values(S.products).filter(p=>p&&p.sku&&!String(p.sku).startsWith('UPC:'));return S.finderMode==='all'?all:all.filter(p=>(+S.capacities[p.sku]||0)>0)}
+function optionCounts(items,keyfn){let m={};for(const x of items){let k=keyfn(x);if(k!=null&&k!=='')m[k]=(m[k]||0)+1}return m}
+function setCountOptions(el,items,keyfn,label,keep){let m=optionCounts(items,keyfn),vals=Object.keys(m).sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true}));el.innerHTML=`<option value="">${label} (${items.length} SKUs)</option>`+vals.map(v=>`<option value="${v}">${v} (${m[v]})</option>`).join('');if(vals.includes(keep))el.value=keep}
 let finderLock=false;
-function renderTouchFinder(changed=''){let a=$('animalFilter'),b=$('brandFilter'),w=$('weightFilter'),pr=$('productFilter');if(!a||finderLock)return;finderLock=true;let av=a.value,bv=b.value,wv=w.value,pv=pr.value,all=finderProducts();if(!changed||changed==='init')setSelectOptions(a,all.map(animalTypeOf),'ANIMAL / TYPE',av);let f=all.filter(p=>!a.value||animalTypeOf(p)===a.value);setSelectOptions(b,f.map(brandLabelOf),'BRAND',bv);f=f.filter(p=>!b.value||brandLabelOf(p)===b.value);setSelectOptions(w,f.map(p=>weightOf(p.description)).filter(x=>x!=null).map(x=>x+' LB'),'WEIGHT',wv);f=f.filter(p=>!w.value||(weightOf(p.description)!=null&&weightOf(p.description)+' LB'===w.value));let products=f.map(p=>({v:p.sku,t:`${productNameOf(p)} · SKU ${p.sku}`})).sort((x,y)=>x.t.localeCompare(y.t));pr.innerHTML='<option value="">BAG / PRODUCT</option>'+products.map(x=>`<option value="${x.v}">${x.t}</option>`).join('');if(products.some(x=>x.v===pv))pr.value=pv;let selected=S.products[pr.value];$('openSelectedBag').disabled=!selected;$('selectedBagInfo').innerHTML=selected?`<b>${selected.description}</b><br>UPC ${(selected.upcs||[]).join(' / ')||'not mapped'} · Remaining need ${S.capacities[selected.sku]??'not set'}`:`${f.length} matching bag${f.length===1?'':'s'} available`;finderLock=false}
+function renderTouchFinder(changed=''){let a=$('animalFilter'),b=$('brandFilter'),w=$('weightFilter'),pr=$('productFilter');if(!a||finderLock)return;finderLock=true;let av=a.value,bv=b.value,wv=w.value,pv=pr.value,all=finderProducts();setCountOptions(a,all,animalTypeOf,'ANIMAL / TYPE',av);let f=all.filter(p=>!a.value||animalTypeOf(p)===a.value);setCountOptions(b,f,brandLabelOf,'BRAND',bv);f=f.filter(p=>!b.value||brandLabelOf(p)===b.value);setCountOptions(w,f,p=>weightOf(p.description)!=null?weightOf(p.description)+' LB':'','WEIGHT',wv);f=f.filter(p=>!w.value||(weightOf(p.description)!=null&&weightOf(p.description)+' LB'===w.value));let products=f.map(p=>({v:p.sku,t:`${productNameOf(p)} · ${S.capacities[p.sku]??'?'} needed · SKU ${p.sku}`})).sort((x,y)=>x.t.localeCompare(y.t));pr.innerHTML=`<option value="">BAG / PRODUCT (${products.length})</option>`+products.map(x=>`<option value="${x.v}">${x.t}</option>`).join('');if(products.some(x=>x.v===pv))pr.value=pv;let selected=S.products[pr.value];$('openSelectedBag').disabled=!selected;$('selectedBagInfo').innerHTML=selected?`<b>${selected.description}</b><br>UPC ${(selected.upcs||[]).join(' / ')||'not mapped'} · Remaining need ${S.capacities[selected.sku]??'not set'}`:`${f.length} relevant SKU${f.length===1?'':'s'}`;if($('finderNeed')){$('finderNeed').classList.toggle('active',S.finderMode==='need');$('finderAll').classList.toggle('active',S.finderMode==='all')}finderLock=false}
 ['animalFilter','brandFilter','weightFilter','productFilter'].forEach(id=>{let el=$(id);if(el)el.onchange=()=>{if(id==='animalFilter'){ $('brandFilter').value='';$('weightFilter').value='';$('productFilter').value=''}else if(id==='brandFilter'){$('weightFilter').value='';$('productFilter').value=''}else if(id==='weightFilter')$('productFilter').value='';renderTouchFinder(id)}});
+$('finderNeed').onclick=()=>{S.finderMode='need';save();['animalFilter','brandFilter','weightFilter','productFilter'].forEach(id=>$(id).value='');renderTouchFinder()};
+$('finderAll').onclick=()=>{S.finderMode='all';save();['animalFilter','brandFilter','weightFilter','productFilter'].forEach(id=>$(id).value='');renderTouchFinder()};
 $('openSelectedBag').onclick=()=>{let p=S.products[$('productFilter').value];if(p)openAmount('capacity',p)};
 function openCapacityFromSearch(sku){let p=S.products[sku];if(p)openAmount('capacity',p)}
 
@@ -257,8 +284,16 @@ function renderUpcs(){
  let rows=[];for(const p of Object.values(S.products))if((p.upcs||[]).length)rows.push(`<div class="item"><b>${p.description}</b><div class="small">SKU ${p.sku}: ${(p.upcs||[]).join(' ↔ ')}</div></div>`);$('upcList').innerHTML=rows.slice(0,500).join('');
  let needs=(S.noBagSeen||[]).slice().reverse();
  $('needsBagCount').textContent=needs.length;let mp=(S.matchedPairs||[]).slice().reverse();if($('matchedPairCount'))$('matchedPairCount').textContent=mp.length;if($('matchedPairList'))$('matchedPairList').innerHTML=mp.slice(0,200).map(x=>`<div class="item"><b>${x.description||'Matched UPC pair'}</b><div class="small">${x.shelf} ↔ ${x.bag}${x.same?' · SAME UPC':''}${x.sku?` · SKU ${x.sku}`:''}</div></div>`).join('')||'<div class="item muted">No matched pairs yet.</div>';
- $('needsBagList').innerHTML=needs.length?needs.map(x=>`<div class="item needsBag"><b>${x.description||'Bag still unidentified'}</b><div class="small">Shelf UPC <b>${x.shelf}</b>${x.sku?` · SKU ${x.sku}`:''}${x.section?` · ${x.section}`:''}</div><div class="small muted">Needs bag barcode found</div></div>`).join(''):'<div class="item muted">Nothing outstanding — every marked shelf has a bag pair.</div>';
+ $('needsBagList').innerHTML=needs.length?needs.map(x=>`<div class="item needsBag ${String(S.updateTargetSku)===String(x.sku)?'scanTarget':''}" onclick="workNoBag('${x.sku||''}','${x.shelf}')"><b>${x.description||'Bag still unidentified'}</b><div class="small">Shelf UPC <b>${x.shelf}</b>${x.sku?` · SKU ${x.sku}`:''}${x.section?` · ${x.section}`:''}</div><div class="small muted">TAP → then scan bag in back room</div></div>`).join(''):'<div class="item muted">Nothing outstanding — every marked shelf has a bag pair.</div>';
 }
+window.workNoBag=(sku,shelf)=>{let p=S.products[sku]||resolve(shelf);if(!p){flash('SKU NOT KNOWN');return}S.updateTargetSku=p.sku;save();render();flash('SCAN BAG FOR '+p.sku)};
+function updateRowsActive(){return (S.updateList||[]).filter(x=>!x.done)}
+function renderUpdateList(){if(!$('updateList'))return;let rows=S.updateList||[],active=rows.filter(x=>!x.done);$('updateRemaining').textContent=active.length;$('updateDone').textContent=rows.length-active.length;let a=$('updateAnimal'),b=$('updateBrand'),w=$('updateWeight'),pr=$('updateProduct'),av=a.value,bv=b.value,wv=w.value,pv=pr.value;let prods=active.map(x=>S.products[x.sku]).filter(Boolean);setCountOptions(a,prods,animalTypeOf,'ANIMAL / TYPE',av);let f=prods.filter(p=>!a.value||animalTypeOf(p)===a.value);setCountOptions(b,f,brandLabelOf,'BRAND',bv);f=f.filter(p=>!b.value||brandLabelOf(p)===b.value);setCountOptions(w,f,p=>weightOf(p.description)!=null?weightOf(p.description)+' LB':'','WEIGHT',wv);f=f.filter(p=>!w.value||(weightOf(p.description)!=null&&weightOf(p.description)+' LB'===w.value));let opts=f.map(p=>({v:p.sku,t:`${productNameOf(p)} · SKU ${p.sku}`}));pr.innerHTML=`<option value="">BAG / PRODUCT (${opts.length})</option>`+opts.map(x=>`<option value="${x.v}">${x.t}</option>`).join('');if(opts.some(x=>x.v===pv))pr.value=pv;let target=S.updateTargetSku&&S.products[S.updateTargetSku];$('updateCurrent').innerHTML=target?`<b>SCAN BAG NOW:</b> ${target.description}<div class="small">SKU ${target.sku} · Master UPC ${(target.upcs||[])[0]||'unknown'}</div>`:'No update bag selected.';$('updateList').innerHTML=rows.map(x=>{let p=S.products[x.sku]||x;return `<div class="item ${x.done?'doneItem':''} ${String(S.updateTargetSku)===String(x.sku)?'scanTarget':''}" onclick="selectUpdateSku('${x.sku}')"><b>${p.description||x.description}</b><div class="small">SKU ${x.sku} · ${x.done?'DONE ✓ · bag '+(x.bagUpc||'linked'):'QTY '+x.qty+' · TAP THEN SCAN BAG'}</div></div>`}).join('')||'<div class="item muted">No UPC update list loaded.</div>'}
+window.selectUpdateSku=sku=>{let x=(S.updateList||[]).find(r=>r.sku===sku);if(!x||x.done)return;S.updateTargetSku=sku;save();render();flash('SCAN BAG FOR '+sku)};
+['updateAnimal','updateBrand','updateWeight','updateProduct'].forEach(id=>{let e=$(id);if(e)e.onchange=()=>{if(id==='updateAnimal'){$('updateBrand').value='';$('updateWeight').value='';$('updateProduct').value=''}else if(id==='updateBrand'){$('updateWeight').value='';$('updateProduct').value=''}else if(id==='updateWeight')$('updateProduct').value='';renderUpdateList()}});
+$('startUpdateSelected').onclick=()=>{let sku=$('updateProduct').value;if(sku)selectUpdateSku(sku)};
+function stepUpdate(dir){let a=updateRowsActive();if(!a.length)return;let i=a.findIndex(x=>x.sku===S.updateTargetSku);i=i<0?0:(i+dir+a.length)%a.length;selectUpdateSku(a[i].sku)}
+$('updatePrev').onclick=()=>stepUpdate(-1);$('updateNext').onclick=()=>stepUpdate(1);
 async function pdfText(file){let buf=await file.arrayBuffer(),pdf=await pdfjsLib.getDocument({data:buf}).promise,out='';for(let i=1;i<=pdf.numPages;i++){let pg=await pdf.getPage(i),tc=await pg.getTextContent();out+=tc.items.map(x=>x.str).join(' ')+'\n'}return out}
 function parsePickText(t){let rows=[];let re=/(\d{7})\s+(\d{8,14})?\s*([A-Z0-9&'\/\-\.\s]+?)\s+[\w\-]+\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/g,m;while((m=re.exec(t))){let sku=m[1],upc=norm(m[2]),desc=m[3].replace(/\s+/g,' ').trim(),qty=+m[5];if(desc.length<3)continue;rows.push({sku,upc,description:desc,qty,picked:0,remaining:qty});let p=S.products[sku]||(S.products[sku]={sku,description:desc,section:'unknown',upcs:[]});p.description=p.description||desc;if(upc)addUpc(sku,upc)}return rows}
 
@@ -298,6 +333,7 @@ function parseMappingText(t){
  }
  return {ok:true,validation:v,rows:plausible,learned,skipped};
 }
+$('updateListFile').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{let t=await pdfText(f),v=validateMasterPickFormat(t);if(!v.ok)throw new Error('Not a TSC PICK LIST REPORT');let rows=parsePickText(t).filter(r=>(+r.qty||0)>=3);let by=Object.fromEntries((S.updateList||[]).map(x=>[x.sku,x]));for(const r of rows){let old=by[r.sku]||{};by[r.sku]={...old,sku:r.sku,description:r.description,qty:r.qty,source:f.name,done:old.done||false};let p=S.products[r.sku]||(S.products[r.sku]={sku:r.sku,description:r.description,section:'unknown',upcs:[]});if(r.description)p.description=r.description;if(r.upc)addUpc(r.sku,r.upc)}S.updateList=Object.values(by);save();render();alert(`Update list appended: ${rows.length} SKU rows with QTY 3+\n${S.updateList.filter(x=>!x.done).length} still need a bag scan`)}catch(err){alert('Could not load update list: '+(err.message||err))}e.target.value=''};
 $('mappingFile').onchange=async e=>{
  let f=e.target.files[0];if(!f)return;
  try{
@@ -471,6 +507,9 @@ function renderAllocation(){
  detail.innerHTML=skuRows.map(x=>{let brand=BOOT.brandNames[x.brand]||x.brand||'Unknown',status=x.cap==null?'<span class="warn">CAPACITY UNKNOWN</span>':`<span class="good">FLOOR ${x.floor}</span> · OVERSTOCK ${x.over}`;return `<details class="allocSku"><summary>${brand} · ${x.p.description||x.description}</summary><div class="allocSkuBody small">SKU <b>${x.sku}</b> · Inbound <b>${x.shipped}</b> · Capacity <b>${x.cap??'?'}</b> · ${status}${x.planogram?`<br><span class="muted">Planogram: ${x.planogram}</span>`:''}</div></details>`}).join('')||'<div class="muted">No SKUs in this category.</div>';
 }
 function download(name,text,type='application/json'){let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function productDataPayload(){return {kind:'pickle-product-data',version:1,exportedAt:new Date().toISOString(),products:S.products,aliases:S.aliases,matchedPairs:S.matchedPairs||[],noBagSeen:S.noBagSeen||[],pendingPairs:S.pendingPairs||[],planograms:S.planograms||{},planogramSkuMap:S.planogramSkuMap||{},updateList:S.updateList||[]}}
+$('exportProductData').onclick=()=>download('pickle-product-data.json',JSON.stringify(productDataPayload(),null,2),'application/json');
+$('importProductData').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{let d=JSON.parse(await f.text());if(d.kind!=='pickle-product-data'&&!d.products)throw new Error('Not Pickle Product Data');for(const [sku,p] of Object.entries(d.products||{})){let cur=S.products[sku]||{sku,upcs:[]};S.products[sku]={...cur,...p,upcs:[...new Set([...(cur.upcs||[]),...(p.upcs||[])].map(norm).filter(Boolean))]}}for(const [u,sku] of Object.entries(d.aliases||{}))S.aliases[norm(u)]=String(sku);for(const p of Object.values(S.products))for(const u of p.upcs||[])S.aliases[norm(u)]=p.sku;S.matchedPairs=[...(S.matchedPairs||[]),...(d.matchedPairs||[])];S.noBagSeen=[...(S.noBagSeen||[]),...(d.noBagSeen||[])];S.pendingPairs=[...(S.pendingPairs||[]),...(d.pendingPairs||[])];S.planograms={...(S.planograms||{}),...(d.planograms||{})};S.planogramSkuMap={...(S.planogramSkuMap||{}),...(d.planogramSkuMap||{})};let by=Object.fromEntries((S.updateList||[]).map(x=>[x.sku,x]));for(const x of d.updateList||[])by[x.sku]={...(by[x.sku]||{}),...x};S.updateList=Object.values(by);save();render();alert('Product Data imported and appended ✓')}catch(err){alert('Import failed: '+(err.message||err))}e.target.value=''};
 $('exportJson').onclick=()=>download('pickle-backup.json',JSON.stringify({version:1,exported:new Date().toISOString(),...S},null,2));
 $('exportUpcCsv').onclick=exportUpcKey;
 $('exportCapCsv').onclick=()=>{let s='sku,description,capacity\n';for(const [sku,c] of Object.entries(S.capacities)){let p=S.products[sku]||{};s+=`${sku},"${(p.description||'').replaceAll('"','""')}",${c}\n`}download('pickle-capacities.csv',s,'text/csv')};
@@ -500,6 +539,109 @@ $('clearUpcKey').onclick=()=>{
  save();render();flash('UPC KEY CLEARED');
  alert('UPC key cleared. SKU Master and capacities were preserved.');
 };
+
+
+// ---- v42 one-shot phone camera barcode scanner ----------------------------
+let cameraStream=null,cameraRunning=false,cameraBusy=false,cameraDetector=null,cameraRAF=0,cameraFallbackReader=null;
+
+function stopCameraScan(msg=''){
+  cameraRunning=false;
+  cancelAnimationFrame(cameraRAF);
+  cameraRAF=0;
+  if(cameraFallbackReader){try{cameraFallbackReader.reset()}catch(e){} cameraFallbackReader=null}
+  if(cameraStream){for(const tr of cameraStream.getTracks())tr.stop();cameraStream=null}
+  const v=$('cameraVideo'); if(v){try{v.pause()}catch(e){} v.srcObject=null}
+  $('cameraOverlay')?.classList.remove('show');
+  if(msg) flash(msg);
+}
+
+async function acceptCameraBarcode(raw){
+  if(cameraBusy)return;
+  const code=norm(raw);
+  if(code.length<6)return;
+  cameraBusy=true;
+  stopCameraScan('UPC FOUND ✓');
+  // Feed the result into the exact same workflow as the Bluetooth HID scanner.
+  setTimeout(()=>{cameraBusy=false;handleScan(code)},80);
+}
+
+async function nativeCameraLoop(){
+  if(!cameraRunning||!cameraDetector)return;
+  try{
+    const hits=await cameraDetector.detect($('cameraVideo'));
+    const hit=hits.find(x=>x.rawValue);
+    if(hit){await acceptCameraBarcode(hit.rawValue);return}
+  }catch(e){}
+  cameraRAF=requestAnimationFrame(nativeCameraLoop);
+}
+
+function loadZXing(){
+  return new Promise((resolve,reject)=>{
+    if(window.ZXingBrowser)return resolve();
+    const s=document.createElement('script');
+    s.src='https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js';
+    s.onload=resolve;s.onerror=()=>reject(new Error('Could not load barcode scanner library'));
+    document.head.appendChild(s);
+  });
+}
+
+async function startCameraScan(){
+  if(cameraRunning)return;
+  if(!navigator.mediaDevices?.getUserMedia){
+    alert('Camera scanning is not available in this browser. Bluetooth scanning still works.');
+    return;
+  }
+  cameraBusy=false;
+  $('cameraOverlay').classList.add('show');
+  $('cameraHint').textContent='STARTING CAMERA…';
+  try{
+    cameraStream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},
+      audio:false
+    });
+    const v=$('cameraVideo');
+    v.srcObject=cameraStream;
+    await v.play();
+    cameraRunning=true;
+    $('cameraHint').textContent='ALIGN THE UPC BARCODE INSIDE THE BOX';
+
+    // Prefer the browser's native detector when available.
+    if('BarcodeDetector' in window){
+      try{
+        const supported=await BarcodeDetector.getSupportedFormats();
+        const formats=['upc_a','upc_e','ean_13','ean_8','code_128'].filter(x=>supported.includes(x));
+        cameraDetector=new BarcodeDetector(formats.length?{formats}:undefined);
+        nativeCameraLoop();
+        return;
+      }catch(e){cameraDetector=null}
+    }
+
+    // Safari/iPhone fallback: ZXing. It still uses the same one-shot behavior.
+    stopCameraScan();
+    $('cameraOverlay').classList.add('show');
+    $('cameraHint').textContent='LOADING CAMERA SCANNER…';
+    await loadZXing();
+    cameraRunning=true;
+    cameraFallbackReader=new ZXingBrowser.BrowserMultiFormatReader();
+    await cameraFallbackReader.decodeFromConstraints(
+      {video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false},
+      $('cameraVideo'),
+      (result,error,controls)=>{
+        if(result){
+          try{controls.stop()}catch(e){}
+          acceptCameraBarcode(result.getText ? result.getText() : result.text);
+        }
+      }
+    );
+    $('cameraHint').textContent='ALIGN THE UPC BARCODE INSIDE THE BOX';
+  }catch(err){
+    stopCameraScan();
+    alert('Could not start camera scanner: '+(err?.message||err)+'\n\nUse the GitHub Pages HTTPS version and allow Camera permission. Bluetooth scanning still works.');
+  }
+}
+$('cameraScanBtn').onclick=startCameraScan;
+$('cameraClose').onclick=()=>stopCameraScan();
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&cameraRunning)stopCameraScan()});
 
 render();
 </script></body></html<button class="tab" data-v="mapping">UPC→SKU Map</button>
