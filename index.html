@@ -37,7 +37,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 #bagMatchTitle{color:#fff;font-size:12px;font-weight:800;max-width:36%}
 </style></head>
 <body>
-<div id="bagMatchBar"><div id="bagMatchTitle">UNKNOWN BAG UPC</div><button id="bagMatchBtn" type="button">SEEK MATCH BY ITEM · PLANOGRAM BAGS &gt;9 LB</button><button id="bagMatchDismiss" class="dismiss" type="button">×</button></div><div id="cameraOverlay">
+<div id="bagMatchBar"><div id="bagMatchTitle">BAG SCAN</div><button id="bagSameBtn" type="button" style="display:none">✓ CONFIRM BAG UPC = SHELF UPC</button><button id="bagMatchBtn" type="button" style="display:none">SEEK MATCH BY ITEM</button><button id="bagMatchDismiss" class="dismiss" type="button">×</button></div><div id="cameraOverlay">
   <div id="cameraTop"><div><b>ONE-SHOT CAMERA SCAN</b><div class="small">Point at a UPC. Pickle stops the camera as soon as it reads one.</div></div><button id="cameraClose" type="button">CANCEL</button></div>
   <div id="cameraViewport">
     <video id="cameraVideo" playsinline muted></video>
@@ -46,7 +46,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   </div>
 </div>
 <div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v43</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button></div>
+<header><div class="brand"><b>🥒 Pickle v44</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button></div>
 <nav id="tabs">
 <button class="tab active" data-v="capacity">Capacity</button>
 <button class="tab" data-v="packing">Packing Breakdown</button>
@@ -220,8 +220,8 @@ function handleScan(raw){
    return
  }
  let p=resolve(code);
- if(!p){p={sku:'UPC:'+code,description:'Unknown UPC '+code,section:'unknown',upcs:[code]};S.products[p.sku]=p;addUpc(p.sku,code);showBagMatch(code)}
- else hideBagMatch();
+ if(!p){p={sku:'UPC:'+code,description:'Unknown UPC '+code,section:'unknown',upcs:[code]};S.products[p.sku]=p;addUpc(p.sku,code);showBagAction(code)}
+ else showBagAction(code);
  if(v==='pick'||v==='rack'){let row=S.pick?.rows?.find(r=>r.sku===p.sku||r.upc===code); if(row&&row.remaining>0)return openAmount('pick',p,row); flash('NOT NEEDED — CAPACITY');return openAmount('capacity',p)}
  return openAmount('capacity',p);
 }
@@ -651,61 +651,60 @@ $('cameraClose').onclick=()=>stopCameraScan();
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&cameraRunning)stopCameraScan()});
 
 
-// ---- v43 bottom UPC match helper ------------------------------------------
-let bagMatchUPC='';
-function showBagMatch(upc){
-  bagMatchUPC=norm(upc||'');
-  if(!bagMatchUPC)return;
-  $('bagMatchTitle').textContent='UPC '+bagMatchUPC+' · NO SKU MATCH';
-  $('bagMatchBar').classList.add('show');
+// ---- v44 contextual physical-bag verification -----------------------------
+let bagMatchUPC='',bagVerifySKU='';
+function hideBagMatch(){ $('bagMatchBar')?.classList.remove('show'); $('bagSameBtn').style.display='none'; $('bagMatchBtn').style.display='none'; }
+function capacityShelfOwner(upc){
+ const code=norm(upc||''),sku=S.aliases?.[code],p=sku?S.products?.[sku]:null;
+ return (p && S.capacities?.[sku]!=null)?p:null;
 }
-function hideBagMatch(){$('bagMatchBar')?.classList.remove('show')}
+function showBagAction(upc){
+ const code=norm(upc||''); if(!code)return; bagMatchUPC=code; hideBagMatch();
+ const p=capacityShelfOwner(code);
+ if(p){
+  bagVerifySKU=p.sku;$('bagMatchTitle').textContent=(p.description||p.sku)+' · '+code;
+  $('bagSameBtn').style.display='';$('bagMatchBar').classList.add('show');return;
+ }
+ const known=resolve(code);
+ if(!known||String(known.sku||'').startsWith('UPC:')){
+  bagVerifySKU='';$('bagMatchTitle').textContent='UNKNOWN UPC '+code;
+  $('bagMatchBtn').style.display='';$('bagMatchBar').classList.add('show');
+ }
+}
+$('bagSameBtn').onclick=()=>{
+ const p=S.products?.[bagVerifySKU];if(!p)return;
+ p.bagUpcs=Array.from(new Set([...(p.bagUpcs||[]),bagMatchUPC]));
+ p.shelfUpcs=Array.from(new Set([...(p.shelfUpcs||[]),bagMatchUPC]));
+ p.upcVerified='same';p.upcVerifiedAt=new Date().toISOString();
+ S.matchedPairs=S.matchedPairs||[];S.matchedPairs.push({shelf:bagMatchUPC,bag:bagMatchUPC,same:true,sku:p.sku,description:p.description,at:new Date().toISOString(),source:'physical-bag-confirmed-same-as-capacity-shelf'});
+ save();hideBagMatch();render();flash('BAG = SHELF UPC VERIFIED ✓');
+};
 $('bagMatchDismiss').onclick=hideBagMatch;
-
 function overstockPlanogramProducts(){
-  return Object.values(S.products).filter(p=>{
-    const w=weightOf(p.description||'');
-    const mapped=!!(S.planogramSkuMap?.[p.sku]||p.planogram);
-    return mapped && w!=null && w>9 && !String(p.sku).startsWith('UPC:');
-  });
+ return Object.values(S.products).filter(p=>{const w=weightOf(p.description||'');return !!(S.planogramSkuMap?.[p.sku]||p.planogram)&&w!=null&&w>9&&!String(p.sku).startsWith('UPC:')});
 }
 function openBagMatchPicker(){
-  const products=overstockPlanogramProducts();
-  if(!products.length){alert('No >9 lb planogram bags are indexed yet. Import planograms first.');return}
-  // Reuse the existing touch selector UI, but temporarily point it at the >9 lb planogram population.
-  window._bagMatchMode=true;
-  hideBagMatch();
-  const tab=[...document.querySelectorAll('.tab')].find(x=>x.dataset.v==='capacity');
-  if(tab)tab.click();
-  setTimeout(()=>{
-    renderTouchFinder();
-    flash('SELECT ITEM FOR UPC '+bagMatchUPC);
-  },50);
+ if(!overstockPlanogramProducts().length){alert('No >9 lb planogram bags are indexed yet. Import planograms first.');return}
+ window._bagMatchMode=true;hideBagMatch();
+ const tab=[...document.querySelectorAll('.tab')].find(x=>x.dataset.v==='capacity');if(tab)tab.click();
+ setTimeout(()=>{renderTouchFinder();flash('SELECT ITEM FOR UPC '+bagMatchUPC)},50);
 }
 $('bagMatchBtn').onclick=openBagMatchPicker;
-
-// Extend finder population while resolving an unknown bag.
-const _v43FinderProducts=finderProducts;
-finderProducts=function(){
-  if(window._bagMatchMode)return overstockPlanogramProducts();
-  return _v43FinderProducts();
-};
-
-// When a product is selected in match mode, tie the unknown UPC to it instead of opening capacity.
-const _v43OpenSelected=$('openSelectedBag').onclick;
+const _v44FinderProducts=finderProducts;
+finderProducts=function(){return window._bagMatchMode?overstockPlanogramProducts():_v44FinderProducts()};
+const _v44OpenSelected=$('openSelectedBag').onclick;
 $('openSelectedBag').onclick=()=>{
-  if(window._bagMatchMode){
-    const sku=$('productFilter').value,p=S.products[sku];
-    if(!p)return;
-    addUpc(sku,bagMatchUPC);
-    const ghost='UPC:'+bagMatchUPC;
-    if(S.products[ghost])delete S.products[ghost];
-    S.aliases[bagMatchUPC]=sku;
-    S.matchedPairs=S.matchedPairs||[];
-    S.matchedPairs.push({shelf:(p.upcs||[])[0]||null,bag:bagMatchUPC,same:(p.upcs||[]).some(u=>norm(u)===bagMatchUPC),sku,description:p.description,at:new Date().toISOString(),source:'seek-match-by-item'});
-    window._bagMatchMode=false;bagMatchUPC='';save();render();flash('BAG UPC LINKED ✓');return;
-  }
-  return _v43OpenSelected();
+ if(window._bagMatchMode){
+  const sku=$('productFilter').value,p=S.products[sku];if(!p)return;
+  const shelf=(p.upcs||[])[0]||null;addUpc(sku,bagMatchUPC);
+  p.bagUpcs=Array.from(new Set([...(p.bagUpcs||[]),bagMatchUPC]));
+  if(shelf)p.shelfUpcs=Array.from(new Set([...(p.shelfUpcs||[]),shelf]));
+  p.upcVerified=(shelf&&norm(shelf)===bagMatchUPC)?'same':'alternate';p.upcVerifiedAt=new Date().toISOString();
+  const ghost='UPC:'+bagMatchUPC;if(S.products[ghost])delete S.products[ghost];S.aliases[bagMatchUPC]=sku;
+  S.matchedPairs=S.matchedPairs||[];S.matchedPairs.push({shelf,bag:bagMatchUPC,same:!!(shelf&&norm(shelf)===bagMatchUPC),sku,description:p.description,at:new Date().toISOString(),source:'seek-match-by-item'});
+  window._bagMatchMode=false;bagMatchUPC='';save();render();flash('BAG UPC LINKED TO SKU ✓');return;
+ }
+ return _v44OpenSelected();
 };
 
 render();
