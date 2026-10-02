@@ -29,9 +29,15 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 #cameraGuide{position:absolute;width:min(88vw,620px);height:28%;border:3px solid #ffad22;border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,.18)}
 #cameraHint{position:absolute;bottom:18px;left:14px;right:14px;text-align:center;color:white;background:rgba(0,0,0,.65);padding:10px;border-radius:12px;font-weight:800}
 #cameraClose{padding:10px 14px;font-weight:900}
+
+#bagMatchBar{display:none;position:fixed;left:10px;right:10px;bottom:10px;z-index:96;background:#111;border:2px solid #ffad22;border-radius:14px;padding:10px;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+#bagMatchBar.show{display:flex;gap:8px;align-items:center}
+#bagMatchBar button{flex:1;background:#ffad22;color:#111;border:0;border-radius:10px;padding:14px 10px;font-weight:950}
+#bagMatchBar .dismiss{flex:0 0 auto;background:#333;color:#fff}
+#bagMatchTitle{color:#fff;font-size:12px;font-weight:800;max-width:36%}
 </style></head>
 <body>
-<div id="cameraOverlay">
+<div id="bagMatchBar"><div id="bagMatchTitle">UNKNOWN BAG UPC</div><button id="bagMatchBtn" type="button">SEEK MATCH BY ITEM · PLANOGRAM BAGS &gt;9 LB</button><button id="bagMatchDismiss" class="dismiss" type="button">×</button></div><div id="cameraOverlay">
   <div id="cameraTop"><div><b>ONE-SHOT CAMERA SCAN</b><div class="small">Point at a UPC. Pickle stops the camera as soon as it reads one.</div></div><button id="cameraClose" type="button">CANCEL</button></div>
   <div id="cameraViewport">
     <video id="cameraVideo" playsinline muted></video>
@@ -40,7 +46,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   </div>
 </div>
 <div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v42</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button></div>
+<header><div class="brand"><b>🥒 Pickle v43</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button></div>
 <nav id="tabs">
 <button class="tab active" data-v="capacity">Capacity</button>
 <button class="tab" data-v="packing">Packing Breakdown</button>
@@ -214,7 +220,8 @@ function handleScan(raw){
    return
  }
  let p=resolve(code);
- if(!p){p={sku:'UPC:'+code,description:'Unknown UPC '+code,section:'unknown',upcs:[code]};S.products[p.sku]=p;addUpc(p.sku,code)}
+ if(!p){p={sku:'UPC:'+code,description:'Unknown UPC '+code,section:'unknown',upcs:[code]};S.products[p.sku]=p;addUpc(p.sku,code);showBagMatch(code)}
+ else hideBagMatch();
  if(v==='pick'||v==='rack'){let row=S.pick?.rows?.find(r=>r.sku===p.sku||r.upc===code); if(row&&row.remaining>0)return openAmount('pick',p,row); flash('NOT NEEDED — CAPACITY');return openAmount('capacity',p)}
  return openAmount('capacity',p);
 }
@@ -642,6 +649,64 @@ async function startCameraScan(){
 $('cameraScanBtn').onclick=startCameraScan;
 $('cameraClose').onclick=()=>stopCameraScan();
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&cameraRunning)stopCameraScan()});
+
+
+// ---- v43 bottom UPC match helper ------------------------------------------
+let bagMatchUPC='';
+function showBagMatch(upc){
+  bagMatchUPC=norm(upc||'');
+  if(!bagMatchUPC)return;
+  $('bagMatchTitle').textContent='UPC '+bagMatchUPC+' · NO SKU MATCH';
+  $('bagMatchBar').classList.add('show');
+}
+function hideBagMatch(){$('bagMatchBar')?.classList.remove('show')}
+$('bagMatchDismiss').onclick=hideBagMatch;
+
+function overstockPlanogramProducts(){
+  return Object.values(S.products).filter(p=>{
+    const w=weightOf(p.description||'');
+    const mapped=!!(S.planogramSkuMap?.[p.sku]||p.planogram);
+    return mapped && w!=null && w>9 && !String(p.sku).startsWith('UPC:');
+  });
+}
+function openBagMatchPicker(){
+  const products=overstockPlanogramProducts();
+  if(!products.length){alert('No >9 lb planogram bags are indexed yet. Import planograms first.');return}
+  // Reuse the existing touch selector UI, but temporarily point it at the >9 lb planogram population.
+  window._bagMatchMode=true;
+  hideBagMatch();
+  const tab=[...document.querySelectorAll('.tab')].find(x=>x.dataset.v==='capacity');
+  if(tab)tab.click();
+  setTimeout(()=>{
+    renderTouchFinder();
+    flash('SELECT ITEM FOR UPC '+bagMatchUPC);
+  },50);
+}
+$('bagMatchBtn').onclick=openBagMatchPicker;
+
+// Extend finder population while resolving an unknown bag.
+const _v43FinderProducts=finderProducts;
+finderProducts=function(){
+  if(window._bagMatchMode)return overstockPlanogramProducts();
+  return _v43FinderProducts();
+};
+
+// When a product is selected in match mode, tie the unknown UPC to it instead of opening capacity.
+const _v43OpenSelected=$('openSelectedBag').onclick;
+$('openSelectedBag').onclick=()=>{
+  if(window._bagMatchMode){
+    const sku=$('productFilter').value,p=S.products[sku];
+    if(!p)return;
+    addUpc(sku,bagMatchUPC);
+    const ghost='UPC:'+bagMatchUPC;
+    if(S.products[ghost])delete S.products[ghost];
+    S.aliases[bagMatchUPC]=sku;
+    S.matchedPairs=S.matchedPairs||[];
+    S.matchedPairs.push({shelf:(p.upcs||[])[0]||null,bag:bagMatchUPC,same:(p.upcs||[]).some(u=>norm(u)===bagMatchUPC),sku,description:p.description,at:new Date().toISOString(),source:'seek-match-by-item'});
+    window._bagMatchMode=false;bagMatchUPC='';save();render();flash('BAG UPC LINKED ✓');return;
+  }
+  return _v43OpenSelected();
+};
 
 render();
 </script></body></html<button class="tab" data-v="mapping">UPC→SKU Map</button>
