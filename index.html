@@ -48,18 +48,19 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   <div id="bagMatchTitle">BAG SCAN</div>
   <div id="bagMatchStatus" style="color:#fff;font-size:12px;line-height:1.3"></div>
   <button id="bagSameBtn" type="button" style="display:none">✓ CONFIRM THIS PHYSICAL BAG</button>
+<button id="bagWrongBtn" type="button" style="display:none;background:#fff;color:#111">✕ INCORRECT BAG — CORRECT ITEM</button>
   <button id="bagMatchBtn" type="button" style="display:none">SEEK MATCH BY ITEM</button>
   <button id="bagMatchDismiss" class="dismiss" type="button">×</button>
 </div><div id="bagPicker"><div id="bagPickerCard">
-<h2 style="margin-top:0">MATCH THIS BAG</h2>
+<h2 style="margin-top:0">MATCH / CORRECT THIS ITEM</h2>
 <div id="bagPickerUPC" class="pill">UPC</div>
-<p class="small muted">Back-room mode — no shelf scan required. Choose the physical bag you are holding. Only planogram bags over 9 lb are shown.</p>
+<p class="small muted">Back-room mode — no shelf scan required. Choose the physical item you are holding. All indexed planogram feed bags and all indexed cat litter items are shown.</p>
 <select id="bagAnimal"><option value="">ANIMAL / TYPE</option></select>
 <select id="bagBrand"><option value="">BRAND</option></select>
 <select id="bagWeight"><option value="">WEIGHT</option></select>
 <select id="bagProduct"><option value="">BAG / PRODUCT</option></select>
 <div id="bagPickerInfo" class="small" style="margin-top:8px"></div>
-<button id="bagPickerConfirm" disabled>ATTACH SCANNED UPC TO THIS SKU</button>
+<button id="bagPickerConfirm" disabled>ATTACH / CORRECT UPC TO THIS SKU</button>
 <button id="bagPickerCancel">CANCEL</button>
 </div></div><div id="cameraOverlay">
   <div id="cameraTop"><div><b>ONE-SHOT CAMERA SCAN</b><div class="small">Point at a UPC. Pickle stops the camera as soon as it reads one.</div></div><button id="cameraClose" type="button">CANCEL</button></div>
@@ -70,7 +71,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   </div>
 </div>
 <div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v46</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button></div>
+<header><div class="brand"><b>🥒 Pickle v47</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button></div>
 <nav id="tabs">
 <button class="tab active" data-v="capacity">Capacity</button>
 <button class="tab" data-v="packing">Packing Breakdown</button>
@@ -271,7 +272,10 @@ $('masterSearch').oninput=renderMaster;
 
 $('noBagBtn').onclick=()=>{let shelf=norm($('upcA').value);if(!shelf){flash('SCAN SHELF FIRST');return}S.noBagSeen=S.noBagSeen||[];let p=resolve(shelf);S.noBagSeen=S.noBagSeen.filter(x=>norm(x.shelf)!==shelf);S.noBagSeen.push({shelf,sku:p?.sku||null,description:p?.description||null,section:p?.section||null,at:new Date().toISOString()});save();$('upcA').value='';$('upcB').value='';$('pairState').textContent='NO BAG RECORDED ✓ — READY FOR NEXT SHELF';flash('NO BAG RECORDED — SCAN NEXT SHELF');setTimeout(()=>{$('pairState').textContent='READY — SCAN SHELF'},600)};
 function productHasUpc(p){if(p.upcs&&p.upcs.length)return true;return Object.entries(S.aliases||{}).some(([u,sku])=>String(sku)===String(p.sku))}
-function animalTypeOf(p){let d=(p.description||'').toUpperCase(),sec=(p.section||'').toLowerCase();if(sec==='dog')return 'DOG';if(sec==='cat')return 'CAT';if(sec==='equine'||/HORSE|EQUINE|OMOLENE|ULTIUM|STRATEGY|SAFECHOICE|PROFORCE|TRIPLE CROWN|\bTC\b/.test(d))return 'EQUINE';if(sec==='bird')return 'CHICKEN / POULTRY';if(/WILD BIRD|SUNFLOWER|CARDINAL|FRUIT & NUT|NO WASTE|FARM MIX/.test(d))return 'WILD BIRD';if(/CAT LITTER|SCOOPABLE|TIDY CATS/.test(d))return 'CAT LITTER';if(/GOAT|SHEEP|CATTLE|CALF|HOG|PIG|RABBIT|DEER|LIVESTOCK/.test(d)||sec==='livestock')return 'CATTLE / LIVESTOCK';return (sec&&sec!=='unknown'&&sec!=='freight')?sec.toUpperCase():'OTHER'}
+function animalTypeOf(p){
+ const _z=((p?.description||'')+' '+(p?.section||'')+' '+(p?.planogram||S.planogramSkuMap?.[p?.sku]||'')).toUpperCase();
+ if(/LITTER|CAT LIT|KITTY LIT|CLUMPING LITTER|CAT PAIL/.test(_z))return 'CAT LITTER';
+let d=(p.description||'').toUpperCase(),sec=(p.section||'').toLowerCase();if(sec==='dog')return 'DOG';if(sec==='cat')return 'CAT';if(sec==='equine'||/HORSE|EQUINE|OMOLENE|ULTIUM|STRATEGY|SAFECHOICE|PROFORCE|TRIPLE CROWN|\bTC\b/.test(d))return 'EQUINE';if(sec==='bird')return 'CHICKEN / POULTRY';if(/WILD BIRD|SUNFLOWER|CARDINAL|FRUIT & NUT|NO WASTE|FARM MIX/.test(d))return 'WILD BIRD';if(/CAT LITTER|SCOOPABLE|TIDY CATS/.test(d))return 'CAT LITTER';if(/GOAT|SHEEP|CATTLE|CALF|HOG|PIG|RABBIT|DEER|LIVESTOCK/.test(d)||sec==='livestock')return 'CATTLE / LIVESTOCK';return (sec&&sec!=='unknown'&&sec!=='freight')?sec.toUpperCase():'OTHER'}
 function brandLabelOf(p){let k=brandOf(p.description||'');return BOOT.brandNames[k]||k||'UNKNOWN'}
 function productNameOf(p){let d=(p.description||'').trim();let brand=brandOf(d);if(brand&&d.toUpperCase().startsWith(brand+' '))d=d.slice(brand.length).trim();d=d.replace(/\b\d+(?:\.\d+)?\s*LB\b/ig,'').replace(/\s{2,}/g,' ').trim();return d||p.description||p.sku}
 function finderProducts(){let all=Object.values(S.products).filter(p=>p&&p.sku&&!String(p.sku).startsWith('UPC:'));return S.finderMode==='all'?all:all.filter(p=>(+S.capacities[p.sku]||0)>0)}
@@ -693,7 +697,7 @@ function priorBagConfirmation(p){
 function bagIsConfirmed(p){return uniqueUpcs(p).length>=2||priorBagConfirmation(p)}
 function hideBagMatch(){
  $('bagMatchBar')?.classList.remove('show');
- $('bagSameBtn').style.display='none';$('bagMatchBtn').style.display='none';
+ $('bagSameBtn').style.display='none';$('bagWrongBtn').style.display='none';$('bagMatchBtn').style.display='none';
 }
 function showKnownBagPanel(p,code){
  bagMatchUPC=norm(code);bagVerifySKU=p.sku;hideBagMatch();
@@ -705,12 +709,12 @@ function showKnownBagPanel(p,code){
    $('bagMatchStatus').innerHTML=`SKU ${p.sku} · Scanned UPC ${bagMatchUPC}<br>One UPC known — confirm that this barcode was physically scanned from the bag.`;
    $('bagSameBtn').style.display='';
  }
- $('bagMatchBar').classList.add('show');
+ $('bagWrongBtn').style.display='';$('bagMatchBar').classList.add('show');
 }
 function showUnknownBagPanel(code){
  bagMatchUPC=norm(code);bagVerifySKU='';hideBagMatch();
  $('bagMatchTitle').textContent='UNKNOWN BAG UPC';
- $('bagMatchStatus').innerHTML=`${bagMatchUPC}<br>No SKU match yet. Identify the bag from the >9 lb planogram catalog.`;
+ $('bagMatchStatus').innerHTML=`${bagMatchUPC}<br>No SKU match yet. Identify the item from the complete planogram feed / cat-litter catalog.`;
  $('bagMatchBtn').style.display='';
  $('bagMatchBar').classList.add('show');
 }
@@ -732,11 +736,20 @@ $('bagSameBtn').onclick=()=>{
  save();render();showKnownBagPanel(p,bagMatchUPC);flash('BAG CONFIRMED ✓');
 };
 $('bagMatchDismiss').onclick=hideBagMatch;
+$('bagWrongBtn').onclick=()=>{
+ if(!bagMatchUPC)return;
+ window._correctingUPCFromSku=bagVerifySKU||null;
+ openBagMatchPicker();
+};
 
 function overstockPlanogramProducts(){
  return Object.values(S.products).filter(p=>{
-   const w=weightOf(p.description||'');
-   return !!(S.planogramSkuMap?.[p.sku]||p.planogram) && w!=null && w>9 && !String(p.sku).startsWith('UPC:');
+   if(String(p.sku).startsWith('UPC:'))return false;
+   if(!(S.planogramSkuMap?.[p.sku]||p.planogram))return false;
+   const z=((p.description||'')+' '+(p.section||'')+' '+(p.planogram||S.planogramSkuMap?.[p.sku]||'')).toUpperCase();
+   const litter=/LITTER|CAT LIT|KITTY LIT|CLUMP|CAT PAIL/.test(z);
+   const feed=/DOG|CAT|EQUINE|HORSE|CATTLE|LIVESTOCK|CHICKEN|POULTRY|BIRD|FEED|FOOD/.test(z);
+   return litter||feed||weightOf(p.description||'')!=null;
  });
 }
 function countSelect(el,items,keyFn,label,keep=''){
@@ -759,11 +772,11 @@ function renderBagPicker(){
  if(opts.some(x=>x.v===pv))pr.value=pv;
  const sel=S.products[pr.value];
  $('bagPickerConfirm').disabled=!sel;
- $('bagPickerInfo').innerHTML=sel?`<b>${sel.description}</b><br>SKU ${sel.sku}<br>Known UPC(s): ${uniqueUpcs(sel).join(' / ')||'none'}<br><b>New scanned bag UPC: ${bagMatchUPC}</b>`:`${f.length} possible >9 lb planogram bag${f.length===1?'':'s'}`;
+ $('bagPickerInfo').innerHTML=sel?`<b>${sel.description}</b><br>SKU ${sel.sku}<br>Known UPC(s): ${uniqueUpcs(sel).join(' / ')||'none'}<br><b>New scanned bag UPC: ${bagMatchUPC}</b>`:`${f.length} possible planogram item${f.length===1?'':'s'}`;
 }
 function openBagMatchPicker(){
  const items=overstockPlanogramProducts();
- if(!items.length){alert('No >9 lb planogram bags are indexed yet. Import planograms first.');return}
+ if(!items.length){alert('No planogram feed/litter items are indexed yet. Import planograms first.');return}
  hideBagMatch();$('bagPickerUPC').textContent='SCANNED BAG UPC '+bagMatchUPC;
  ['bagAnimal','bagBrand','bagWeight','bagProduct'].forEach(id=>$(id).value='');
  renderBagPicker();$('bagPicker').classList.add('show');
@@ -777,9 +790,18 @@ $('bagPickerConfirm').onclick=()=>{
  // Delete only the temporary unknown placeholder. Never require a shelf scan.
  const ghost='UPC:'+code;
  if(S.products[ghost])delete S.products[ghost];
- if(S.aliases[code]===ghost)delete S.aliases[code];
+ const oldSku=window._correctingUPCFromSku||S.aliases?.[code];
+ if(oldSku&&oldSku!==sku&&S.products?.[oldSku]){
+   const old=S.products[oldSku];
+   old.upcs=(old.upcs||[]).filter(u=>norm(u)!==code);
+   old.bagUpcs=(old.bagUpcs||[]).filter(u=>norm(u)!==code);
+   old.shelfUpcs=(old.shelfUpcs||[]).filter(u=>norm(u)!==code);
+   S.matchedPairs=(S.matchedPairs||[]).filter(x=>!(String(x.sku)===String(oldSku)&&norm(x.bag)===code));
+ }
+ if(S.aliases?.[code])delete S.aliases[code];
  const before=uniqueUpcs(p);
  addUpc(sku,code);
+ window._correctingUPCFromSku=null;
  p.bagUpcs=[...new Set([...(p.bagUpcs||[]),code])];
  p.upcVerified=(before.length&&before.some(u=>u!==code))?'alternate':'physical-bag';
  p.bagConfirmedAt=new Date().toISOString();
@@ -792,7 +814,7 @@ $('bagPickerConfirm').onclick=()=>{
  $('bagPicker').classList.remove('show');
  save();render();
  showKnownBagPanel(p,code);
- flash('UPC → SKU ATTACHED ✓');
+ flash('UPC → SKU ATTACHED / CORRECTED ✓');
 };
 
 render();
