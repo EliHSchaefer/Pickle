@@ -71,7 +71,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   </div>
 </div>
 <div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v51</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
+<header><div class="brand"><b>🥒 Pickle v52</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
 <nav id="tabs">
 <button class="tab active" data-v="capacity">Capacity</button>
 <button class="tab" data-v="packing">Packing Breakdown</button>
@@ -880,6 +880,66 @@ $('bagPickerConfirm').onclick=()=>{
  save();render();
  showKnownBagPanel(p,code);
  flash('UPC → SKU ATTACHED / CORRECTED ✓');
+};
+
+// ---- v52 authoritative Bluetooth/HID dispatcher ---------------------------
+// The old path could recognize the barcode and flash "scan received" without reliably
+// dispatching it into the current product workflow. This capture-phase listener owns
+// physical keyboard-wedge scans and calls the current handleScan() exactly once.
+let v52HidBuffer='',v52HidTimer=0,v52LastDispatch='',v52LastAt=0;
+function v52LooksBarcode(s){return /^[0-9]{6,18}$/.test(String(s||'').trim())}
+function v52Dispatch(raw){
+ const code=norm(raw||'');
+ if(!v52LooksBarcode(code))return false;
+ const now=Date.now();
+ if(code===v52LastDispatch && now-v52LastAt<700)return true;
+ v52LastDispatch=code;v52LastAt=now;
+ clearTimeout(v52HidTimer);v52HidTimer=0;v52HidBuffer='';
+ const st=$('scannerStatus');if(st)st.textContent='Bluetooth UPC '+code+' ✓';
+ try{
+   // Always resolve the latest function, after all v49-v51 wrappers have loaded.
+   window.handleScan(code);
+ }catch(err){
+   console.error('HID dispatch failed',err);
+   alert('Barcode received ('+code+') but Pickle could not process it: '+(err?.message||err));
+ }
+ return true;
+}
+function v52IdleSubmit(){
+ clearTimeout(v52HidTimer);
+ v52HidTimer=setTimeout(()=>{if(v52LooksBarcode(v52HidBuffer))v52Dispatch(v52HidBuffer);else v52HidBuffer=''},180);
+}
+document.addEventListener('keydown',e=>{
+ // Do not steal typing inside file inputs. Scanner digits elsewhere are global.
+ if(e.ctrlKey||e.metaKey||e.altKey)return;
+ const k=e.key;
+ if((k==='Enter'||k==='Tab'||k==='NumpadEnter')&&v52HidBuffer){
+   if(v52LooksBarcode(v52HidBuffer)){
+     e.preventDefault();e.stopImmediatePropagation();v52Dispatch(v52HidBuffer);
+   }else v52HidBuffer='';
+   return;
+ }
+ if(/^[0-9]$/.test(k)){
+   // Barcode scanners emit digits rapidly. Capture them before legacy listeners.
+   v52HidBuffer+=k;
+   if(v52HidBuffer.length>18)v52HidBuffer=v52HidBuffer.slice(-18);
+   v52IdleSubmit();
+   e.stopImmediatePropagation();
+ }
+},true);
+
+// Also support scanners/browsers that emit the whole UPC through beforeinput/input.
+document.addEventListener('beforeinput',e=>{
+ const d=String(e.data||'').replace(/\D/g,'');
+ if(d.length>=6 && v52LooksBarcode(d)){e.preventDefault();v52Dispatch(d)}
+},true);
+
+// HID READY now explicitly resets scanner state/focus.
+const v52Ready=$('hidReady');
+if(v52Ready)v52Ready.onclick=()=>{
+ document.activeElement?.blur?.();v52HidBuffer='';clearTimeout(v52HidTimer);
+ const st=$('scannerStatus');if(st)st.textContent='Bluetooth/HID armed';
+ flash('HID ARMED — SCAN NOW');
 };
 
 render();
