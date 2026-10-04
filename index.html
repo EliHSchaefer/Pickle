@@ -54,7 +54,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 </div><div id="bagPicker"><div id="bagPickerCard">
 <h2 style="margin-top:0">MATCH / CORRECT THIS ITEM</h2>
 <div id="bagPickerUPC" class="pill">UPC</div>
-<p class="small muted">Back-room mode — no shelf scan required. Choose the physical item you are holding. All indexed planogram feed bags and all indexed cat litter items are shown.</p>
+<p class="small muted">Back-room mode — no shelf scan required. Choose the physical item you are holding. Every SKU indexed from every uploaded planogram is available here. Pick the exact physical item.</p>
 <select id="bagAnimal"><option value="">ANIMAL / TYPE</option></select>
 <select id="bagBrand"><option value="">BRAND</option></select>
 <select id="bagWeight"><option value="">WEIGHT</option></select>
@@ -71,7 +71,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   </div>
 </div>
 <div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v47</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button></div>
+<header><div class="brand"><b>🥒 Pickle v49</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button></div>
 <nav id="tabs">
 <button class="tab active" data-v="capacity">Capacity</button>
 <button class="tab" data-v="packing">Packing Breakdown</button>
@@ -201,7 +201,11 @@ const $=id=>document.getElementById(id), norm=x=>String(x||'').replace(/\D/g,'')
 function brandOf(desc=''){let d=desc.toUpperCase();let keys=Object.keys(BOOT.brandNames).sort((a,b)=>b.length-a.length);let k=keys.find(x=>d.startsWith(x+' ')||d===x);return k||d.split(/\s+/)[0]||'UNKNOWN'}
 function weightOf(desc=''){let m=desc.toUpperCase().match(/(\d+(?:\.\d+)?)\s*LB/);return m?+m[1]:null}
 function resolve(code){code=norm(code); if(!code)return null; if(S.products[code])return S.products[code]; let sku=S.aliases[code];if(sku&&S.products[sku])return S.products[sku]; for(const p of Object.values(S.products)){if((p.upcs||[]).some(u=>norm(u)===code)){S.aliases[code]=p.sku;return p}} return null}
-function addUpc(sku,upc){upc=norm(upc);if(!sku||!upc)return;let p=S.products[sku]||(S.products[sku]={sku,description:'Unknown product',section:'unknown',upcs:[]});p.upcs=p.upcs||[];if(!p.upcs.includes(upc))p.upcs.push(upc);S.aliases[upc]=sku;save()}
+function addUpc(sku,upc,source='scan'){upc=norm(upc);if(!sku||!upc)return;
+ let p=S.products[sku]||(S.products[sku]={sku,description:'Unknown product',section:'unknown',upcs:[]});
+ p.upcs=p.upcs||[];if(!p.upcs.includes(upc))p.upcs.push(upc);
+ p.masterUpdatedAt=new Date().toISOString();p.masterSources=[...new Set([...(p.masterSources||[]),source])];
+ S.aliases[upc]=sku;save()}
 for(const p of Object.values(S.products))for(const u of p.upcs||[])S.aliases[norm(u)]=p.sku;
 function flash(t='SCAN RECEIVED'){let f=$('scanFlash');f.textContent=t;f.classList.add('show');setTimeout(()=>f.classList.remove('show'),650)}
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab,.view').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.v).classList.add('active');render()});
@@ -273,16 +277,26 @@ $('masterSearch').oninput=renderMaster;
 $('noBagBtn').onclick=()=>{let shelf=norm($('upcA').value);if(!shelf){flash('SCAN SHELF FIRST');return}S.noBagSeen=S.noBagSeen||[];let p=resolve(shelf);S.noBagSeen=S.noBagSeen.filter(x=>norm(x.shelf)!==shelf);S.noBagSeen.push({shelf,sku:p?.sku||null,description:p?.description||null,section:p?.section||null,at:new Date().toISOString()});save();$('upcA').value='';$('upcB').value='';$('pairState').textContent='NO BAG RECORDED ✓ — READY FOR NEXT SHELF';flash('NO BAG RECORDED — SCAN NEXT SHELF');setTimeout(()=>{$('pairState').textContent='READY — SCAN SHELF'},600)};
 function productHasUpc(p){if(p.upcs&&p.upcs.length)return true;return Object.entries(S.aliases||{}).some(([u,sku])=>String(sku)===String(p.sku))}
 function animalTypeOf(p){
- const _z=((p?.description||'')+' '+(p?.section||'')+' '+(p?.planogram||S.planogramSkuMap?.[p?.sku]||'')).toUpperCase();
- if(/LITTER|CAT LIT|KITTY LIT|CLUMPING LITTER|CAT PAIL/.test(_z))return 'CAT LITTER';
-let d=(p.description||'').toUpperCase(),sec=(p.section||'').toLowerCase();if(sec==='dog')return 'DOG';if(sec==='cat')return 'CAT';if(sec==='equine'||/HORSE|EQUINE|OMOLENE|ULTIUM|STRATEGY|SAFECHOICE|PROFORCE|TRIPLE CROWN|\bTC\b/.test(d))return 'EQUINE';if(sec==='bird')return 'CHICKEN / POULTRY';if(/WILD BIRD|SUNFLOWER|CARDINAL|FRUIT & NUT|NO WASTE|FARM MIX/.test(d))return 'WILD BIRD';if(/CAT LITTER|SCOOPABLE|TIDY CATS/.test(d))return 'CAT LITTER';if(/GOAT|SHEEP|CATTLE|CALF|HOG|PIG|RABBIT|DEER|LIVESTOCK/.test(d)||sec==='livestock')return 'CATTLE / LIVESTOCK';return (sec&&sec!=='unknown'&&sec!=='freight')?sec.toUpperCase():'OTHER'}
+ const d=(p?.description||'').toUpperCase();
+ const pg=(p?.planogram||S.planogramSkuMap?.[p?.sku]||'').toUpperCase();
+ const sec=(p?.section||'').toUpperCase();
+ if(/LITTER|CAT LIT|KITTY LIT/.test(d+' '+pg+' '+sec))return 'CAT LITTER';
+ if(/CHICKEN|POULTRY/.test(pg+' '+sec))return 'CHICKEN / POULTRY';
+ if(/DOG FOOD|DOG\b/.test(pg+' '+sec))return 'DOG';
+ if(/CAT FOOD|CAT\b/.test(pg+' '+sec))return 'CAT';
+ if(/EQUINE|HORSE/.test(pg+' '+sec))return 'EQUINE';
+ if(/DEER/.test(pg+' '+d))return 'DEER';
+ if(/CATTLE|LIVESTOCK/.test(pg+' '+sec))return 'CATTLE / LIVESTOCK';
+ if(/WILD BIRD/.test(pg+' '+d))return 'WILD BIRD';
+ return pg ? pg : (sec&&sec!=='UNKNOWN'&&sec!=='FREIGHT'?sec:'OTHER');
+}
 function brandLabelOf(p){let k=brandOf(p.description||'');return BOOT.brandNames[k]||k||'UNKNOWN'}
 function productNameOf(p){let d=(p.description||'').trim();let brand=brandOf(d);if(brand&&d.toUpperCase().startsWith(brand+' '))d=d.slice(brand.length).trim();d=d.replace(/\b\d+(?:\.\d+)?\s*LB\b/ig,'').replace(/\s{2,}/g,' ').trim();return d||p.description||p.sku}
 function finderProducts(){let all=Object.values(S.products).filter(p=>p&&p.sku&&!String(p.sku).startsWith('UPC:'));return S.finderMode==='all'?all:all.filter(p=>(+S.capacities[p.sku]||0)>0)}
 function optionCounts(items,keyfn){let m={};for(const x of items){let k=keyfn(x);if(k!=null&&k!=='')m[k]=(m[k]||0)+1}return m}
 function setCountOptions(el,items,keyfn,label,keep){let m=optionCounts(items,keyfn),vals=Object.keys(m).sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true}));el.innerHTML=`<option value="">${label} (${items.length} SKUs)</option>`+vals.map(v=>`<option value="${v}">${v} (${m[v]})</option>`).join('');if(vals.includes(keep))el.value=keep}
 let finderLock=false;
-function renderTouchFinder(changed=''){let a=$('animalFilter'),b=$('brandFilter'),w=$('weightFilter'),pr=$('productFilter');if(!a||finderLock)return;finderLock=true;let av=a.value,bv=b.value,wv=w.value,pv=pr.value,all=finderProducts();setCountOptions(a,all,animalTypeOf,'ANIMAL / TYPE',av);let f=all.filter(p=>!a.value||animalTypeOf(p)===a.value);setCountOptions(b,f,brandLabelOf,'BRAND',bv);f=f.filter(p=>!b.value||brandLabelOf(p)===b.value);setCountOptions(w,f,p=>weightOf(p.description)!=null?weightOf(p.description)+' LB':'','WEIGHT',wv);f=f.filter(p=>!w.value||(weightOf(p.description)!=null&&weightOf(p.description)+' LB'===w.value));let products=f.map(p=>({v:p.sku,t:`${productNameOf(p)} · ${S.capacities[p.sku]??'?'} needed · SKU ${p.sku}`})).sort((x,y)=>x.t.localeCompare(y.t));pr.innerHTML=`<option value="">BAG / PRODUCT (${products.length})</option>`+products.map(x=>`<option value="${x.v}">${x.t}</option>`).join('');if(products.some(x=>x.v===pv))pr.value=pv;let selected=S.products[pr.value];$('openSelectedBag').disabled=!selected;$('selectedBagInfo').innerHTML=selected?`<b>${selected.description}</b><br>UPC ${(selected.upcs||[]).join(' / ')||'not mapped'} · Remaining need ${S.capacities[selected.sku]??'not set'}`:`${f.length} relevant SKU${f.length===1?'':'s'}`;if($('finderNeed')){$('finderNeed').classList.toggle('active',S.finderMode==='need');$('finderAll').classList.toggle('active',S.finderMode==='all')}finderLock=false}
+function renderTouchFinder(changed=''){let a=$('animalFilter'),b=$('brandFilter'),w=$('weightFilter'),pr=$('productFilter');if(!a||finderLock)return;finderLock=true;let av=a.value,bv=b.value,wv=w.value,pv=pr.value,all=finderProducts();setCountOptions(a,all,animalTypeOf,'ANIMAL / TYPE',av);let f=all.filter(p=>!a.value||animalTypeOf(p)===a.value);setCountOptions(b,f,brandLabelOf,'BRAND',bv);f=f.filter(p=>!b.value||brandLabelOf(p)===b.value);setCountOptions(w,f,p=>weightOf(p.description)!=null?weightOf(p.description)+' LB':'WEIGHT NOT LISTED','WEIGHT',wv);f=f.filter(p=>!w.value||((weightOf(p.description)!=null?weightOf(p.description)+' LB':'WEIGHT NOT LISTED')===w.value));let products=f.map(p=>({v:p.sku,t:`${productNameOf(p)} · ${S.capacities[p.sku]??'?'} needed · SKU ${p.sku}`})).sort((x,y)=>x.t.localeCompare(y.t));pr.innerHTML=`<option value="">ITEM / PRODUCT (${products.length})</option>`+products.map(x=>`<option value="${x.v}">${x.t}</option>`).join('');if(products.some(x=>x.v===pv))pr.value=pv;let selected=S.products[pr.value];$('openSelectedBag').disabled=!selected;$('selectedBagInfo').innerHTML=selected?`<b>${selected.description}</b><br>UPC ${(selected.upcs||[]).join(' / ')||'not mapped'} · Remaining need ${S.capacities[selected.sku]??'not set'}`:`${f.length} relevant SKU${f.length===1?'':'s'}`;if($('finderNeed')){$('finderNeed').classList.toggle('active',S.finderMode==='need');$('finderAll').classList.toggle('active',S.finderMode==='all')}finderLock=false}
 ['animalFilter','brandFilter','weightFilter','productFilter'].forEach(id=>{let el=$(id);if(el)el.onchange=()=>{if(id==='animalFilter'){ $('brandFilter').value='';$('weightFilter').value='';$('productFilter').value=''}else if(id==='brandFilter'){$('weightFilter').value='';$('productFilter').value=''}else if(id==='weightFilter')$('productFilter').value='';renderTouchFinder(id)}});
 $('finderNeed').onclick=()=>{S.finderMode='need';save();['animalFilter','brandFilter','weightFilter','productFilter'].forEach(id=>$(id).value='');renderTouchFinder()};
 $('finderAll').onclick=()=>{S.finderMode='all';save();['animalFilter','brandFilter','weightFilter','productFilter'].forEach(id=>$(id).value='');renderTouchFinder()};
@@ -328,14 +342,19 @@ function renderUpcs(){
 }
 window.workNoBag=(sku,shelf)=>{let p=S.products[sku]||resolve(shelf);if(!p){flash('SKU NOT KNOWN');return}S.updateTargetSku=p.sku;save();render();flash('SCAN BAG FOR '+p.sku)};
 function updateRowsActive(){return (S.updateList||[]).filter(x=>!x.done)}
-function renderUpdateList(){if(!$('updateList'))return;let rows=S.updateList||[],active=rows.filter(x=>!x.done);$('updateRemaining').textContent=active.length;$('updateDone').textContent=rows.length-active.length;let a=$('updateAnimal'),b=$('updateBrand'),w=$('updateWeight'),pr=$('updateProduct'),av=a.value,bv=b.value,wv=w.value,pv=pr.value;let prods=active.map(x=>S.products[x.sku]).filter(Boolean);setCountOptions(a,prods,animalTypeOf,'ANIMAL / TYPE',av);let f=prods.filter(p=>!a.value||animalTypeOf(p)===a.value);setCountOptions(b,f,brandLabelOf,'BRAND',bv);f=f.filter(p=>!b.value||brandLabelOf(p)===b.value);setCountOptions(w,f,p=>weightOf(p.description)!=null?weightOf(p.description)+' LB':'','WEIGHT',wv);f=f.filter(p=>!w.value||(weightOf(p.description)!=null&&weightOf(p.description)+' LB'===w.value));let opts=f.map(p=>({v:p.sku,t:`${productNameOf(p)} · SKU ${p.sku}`}));pr.innerHTML=`<option value="">BAG / PRODUCT (${opts.length})</option>`+opts.map(x=>`<option value="${x.v}">${x.t}</option>`).join('');if(opts.some(x=>x.v===pv))pr.value=pv;let target=S.updateTargetSku&&S.products[S.updateTargetSku];$('updateCurrent').innerHTML=target?`<b>SCAN BAG NOW:</b> ${target.description}<div class="small">SKU ${target.sku} · Master UPC ${(target.upcs||[])[0]||'unknown'}</div>`:'No update bag selected.';$('updateList').innerHTML=rows.map(x=>{let p=S.products[x.sku]||x;return `<div class="item ${x.done?'doneItem':''} ${String(S.updateTargetSku)===String(x.sku)?'scanTarget':''}" onclick="selectUpdateSku('${x.sku}')"><b>${p.description||x.description}</b><div class="small">SKU ${x.sku} · ${x.done?'DONE ✓ · bag '+(x.bagUpc||'linked'):'QTY '+x.qty+' · TAP THEN SCAN BAG'}</div></div>`}).join('')||'<div class="item muted">No UPC update list loaded.</div>'}
+function renderUpdateList(){if(!$('updateList'))return;let rows=S.updateList||[],active=rows.filter(x=>!x.done);$('updateRemaining').textContent=active.length;$('updateDone').textContent=rows.length-active.length;let a=$('updateAnimal'),b=$('updateBrand'),w=$('updateWeight'),pr=$('updateProduct'),av=a.value,bv=b.value,wv=w.value,pv=pr.value;let prods=active.map(x=>S.products[x.sku]).filter(Boolean);setCountOptions(a,prods,animalTypeOf,'ANIMAL / TYPE',av);let f=prods.filter(p=>!a.value||animalTypeOf(p)===a.value);setCountOptions(b,f,brandLabelOf,'BRAND',bv);f=f.filter(p=>!b.value||brandLabelOf(p)===b.value);setCountOptions(w,f,p=>weightOf(p.description)!=null?weightOf(p.description)+' LB':'WEIGHT NOT LISTED','WEIGHT',wv);f=f.filter(p=>!w.value||((weightOf(p.description)!=null?weightOf(p.description)+' LB':'WEIGHT NOT LISTED')===w.value));let opts=f.map(p=>({v:p.sku,t:`${productNameOf(p)} · SKU ${p.sku}`}));pr.innerHTML=`<option value="">ITEM / PRODUCT (${opts.length})</option>`+opts.map(x=>`<option value="${x.v}">${x.t}</option>`).join('');if(opts.some(x=>x.v===pv))pr.value=pv;let target=S.updateTargetSku&&S.products[S.updateTargetSku];$('updateCurrent').innerHTML=target?`<b>SCAN BAG NOW:</b> ${target.description}<div class="small">SKU ${target.sku} · Master UPC ${(target.upcs||[])[0]||'unknown'}</div>`:'No update bag selected.';$('updateList').innerHTML=rows.map(x=>{let p=S.products[x.sku]||x;return `<div class="item ${x.done?'doneItem':''} ${String(S.updateTargetSku)===String(x.sku)?'scanTarget':''}" onclick="selectUpdateSku('${x.sku}')"><b>${p.description||x.description}</b><div class="small">SKU ${x.sku} · ${x.done?'DONE ✓ · bag '+(x.bagUpc||'linked'):'QTY '+x.qty+' · TAP THEN SCAN BAG'}</div></div>`}).join('')||'<div class="item muted">No UPC update list loaded.</div>'}
 window.selectUpdateSku=sku=>{let x=(S.updateList||[]).find(r=>r.sku===sku);if(!x||x.done)return;S.updateTargetSku=sku;save();render();flash('SCAN BAG FOR '+sku)};
 ['updateAnimal','updateBrand','updateWeight','updateProduct'].forEach(id=>{let e=$(id);if(e)e.onchange=()=>{if(id==='updateAnimal'){$('updateBrand').value='';$('updateWeight').value='';$('updateProduct').value=''}else if(id==='updateBrand'){$('updateWeight').value='';$('updateProduct').value=''}else if(id==='updateWeight')$('updateProduct').value='';renderUpdateList()}});
 $('startUpdateSelected').onclick=()=>{let sku=$('updateProduct').value;if(sku)selectUpdateSku(sku)};
 function stepUpdate(dir){let a=updateRowsActive();if(!a.length)return;let i=a.findIndex(x=>x.sku===S.updateTargetSku);i=i<0?0:(i+dir+a.length)%a.length;selectUpdateSku(a[i].sku)}
 $('updatePrev').onclick=()=>stepUpdate(-1);$('updateNext').onclick=()=>stepUpdate(1);
 async function pdfText(file){let buf=await file.arrayBuffer(),pdf=await pdfjsLib.getDocument({data:buf}).promise,out='';for(let i=1;i<=pdf.numPages;i++){let pg=await pdf.getPage(i),tc=await pg.getTextContent();out+=tc.items.map(x=>x.str).join(' ')+'\n'}return out}
-function parsePickText(t){let rows=[];let re=/(\d{7})\s+(\d{8,14})?\s*([A-Z0-9&'\/\-\.\s]+?)\s+[\w\-]+\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/g,m;while((m=re.exec(t))){let sku=m[1],upc=norm(m[2]),desc=m[3].replace(/\s+/g,' ').trim(),qty=+m[5];if(desc.length<3)continue;rows.push({sku,upc,description:desc,qty,picked:0,remaining:qty});let p=S.products[sku]||(S.products[sku]={sku,description:desc,section:'unknown',upcs:[]});p.description=p.description||desc;if(upc)addUpc(sku,upc)}return rows}
+function parsePickText(t){let rows=[];let re=/(\d{7})\s+(\d{8,14})?\s*([A-Z0-9&'\/\-\.\s]+?)\s+[\w\-]+\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/g,m;while((m=re.exec(t))){let sku=m[1],upc=norm(m[2]),desc=m[3].replace(/\s+/g,' ').trim(),qty=+m[5];if(desc.length<3)continue;rows.push({sku,upc,description:desc,qty,picked:0,remaining:qty});let p=S.products[sku]||(S.products[sku]={sku,description:desc,section:'unknown',upcs:[]});
+if(!p.description||p.description.startsWith('Unknown'))p.description=desc;
+p.pickListDescription=desc||p.pickListDescription||'';
+p.masterUpdatedAt=new Date().toISOString();
+p.masterSources=[...new Set([...(p.masterSources||[]),'pick-list'])];
+if(upc)addUpc(sku,upc)}return rows}
 
 function validateMasterPickFormat(t){
  const u=(t||'').toUpperCase().replace(/\s+/g,' ');
@@ -419,19 +438,30 @@ function renderRack(){let rows=(S.pick?.rows||[]).filter(r=>rackQty(r)>0),groups
 
 function cleanPlanogramTitle(name=''){return name.replace(/\.pdf$/i,'').replace(/\(\d+\)\s*$/,'').trim()}
 function parsePlanogramSkus(t){
- let lines=t.split(/\n/).map(x=>x.trim()).filter(Boolean),found=new Map();
- // PDF.js text extraction can flatten spacing, so accept only rows that begin Seq + 7-digit SKU.
+ const lines=t.split(/\n/).map(x=>x.trim()).filter(Boolean),found=new Map();
+ const bad=/^(FIX:|Planogram|Segment:|Page:|SKU REPORT|Confidential|MAIN AISLE|FRONT VIEW|SIDE VIEW)/i;
+ // Layout A (common TSC/PDF.js): sequence is a separate text item and the next line is "1234567 DESCRIPTION".
  for(const line of lines){
-   let m=line.match(/^\s*(\d{1,3})\s+(\d{7})\s+(.+?)(?:\s+-?\d+(?:\.\d+)?)?\s*$/);
+   let m=line.match(/^(\d{7})\s+(.+?)\s*$/);
    if(m){
-     let sku=m[2],desc=m[3].replace(/\s+-?\d+(?:\.\d+)?\s*$/,'').trim();
-     if(desc && !/^(SKU|FIX:|Planogram|Segment:|Page:)/i.test(desc))found.set(sku,desc);
+     let desc=m[2].replace(/\s+-?\d+(?:\.\d+)?\s*$/,'').trim();
+     if(desc&&!bad.test(desc)&&/[A-Z]/i.test(desc))found.set(m[1],desc);
    }
  }
- // Fallback for flattened text: use occurrences following SKU Description headers.
- if(!found.size){
-   let re=/(?:^|\s)(\d{1,3})\s+(\d{7})\s+([A-Z0-9][A-Z0-9&'./%+\- ]{2,80}?)(?=\s+-?\d+(?:\.\d+)?(?:\s|$))/g,m;
-   while((m=re.exec(t)))found.set(m[2],m[3].trim());
+ // Layout B: "SEQ 1234567 DESCRIPTION".
+ for(const line of lines){
+   let m=line.match(/^\d{1,3}\s+(\d{7})\s+(.+?)\s*$/);
+   if(m){
+     let desc=m[2].replace(/\s+-?\d+(?:\.\d+)?\s*$/,'').trim();
+     if(desc&&!bad.test(desc)&&/[A-Z]/i.test(desc))found.set(m[1],desc);
+   }
+ }
+ // Flattened fallback.
+ let flat=t.replace(/\s+/g,' ');
+ let rx=/(?:^|\s)(\d{7})\s+([A-Z][A-Z0-9&'./%+\- ]{2,100}?)(?=\s+-?\d+(?:\.\d+)?\s|\s+FIX:|\s+SKU REPORT|\s+\d{7}\s|$)/g,m;
+ while((m=rx.exec(flat))){
+   let desc=m[2].trim();
+   if(desc&&!bad.test(desc))found.set(m[1],desc);
  }
  return [...found].map(([sku,description])=>({sku,description}));
 }
@@ -447,10 +477,13 @@ $('planogramFiles').onchange=async e=>{
    for(const r of rows){
      S.planogramSkuMap[r.sku]=title;
      let p=S.products[r.sku]||(S.products[r.sku]={sku:r.sku,description:r.description||'Unknown product',section:'unknown',upcs:[]});
+     p.planogramDescription=r.description||p.planogramDescription||'';
      if((!p.description||p.description.startsWith('Unknown'))&&r.description)p.description=r.description;
      p.planogram=title;
+     p.masterUpdatedAt=new Date().toISOString();
+     p.masterSources=[...new Set([...(p.masterSources||[]),'planogram'])];
    }
-   total+=rows.length;msg.push(`${title}: ${rows.length} SKUs`);
+   total+=rows.length;msg.push(`${title}: ${rows.length} SKUs indexed`);
  }
  save();render();e.target.value='';
  $('planogramImportStatus').innerHTML=`Imported <b>${files.length}</b> planogram PDFs · <b>${total}</b> SKU placements<br>${msg.join(' · ')}`;
@@ -547,9 +580,44 @@ function renderAllocation(){
  detail.innerHTML=skuRows.map(x=>{let brand=BOOT.brandNames[x.brand]||x.brand||'Unknown',status=x.cap==null?'<span class="warn">CAPACITY UNKNOWN</span>':`<span class="good">FLOOR ${x.floor}</span> · OVERSTOCK ${x.over}`;return `<details class="allocSku"><summary>${brand} · ${x.p.description||x.description}</summary><div class="allocSkuBody small">SKU <b>${x.sku}</b> · Inbound <b>${x.shipped}</b> · Capacity <b>${x.cap??'?'}</b> · ${status}${x.planogram?`<br><span class="muted">Planogram: ${x.planogram}</span>`:''}</div></details>`}).join('')||'<div class="muted">No SKUs in this category.</div>';
 }
 function download(name,text,type='application/json'){let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
-function productDataPayload(){return {kind:'pickle-product-data',version:1,exportedAt:new Date().toISOString(),products:S.products,aliases:S.aliases,matchedPairs:S.matchedPairs||[],noBagSeen:S.noBagSeen||[],pendingPairs:S.pendingPairs||[],planograms:S.planograms||{},planogramSkuMap:S.planogramSkuMap||{},updateList:S.updateList||[]}}
+function productDataPayload(){return {kind:'pickle-product-data',version:1,exportedAt:new Date().toISOString(),products:S.products,aliases:S.aliases,matchedPairs:S.matchedPairs||[],noBagSeen:S.noBagSeen||[],pendingPairs:S.pendingPairs||[],planograms:S.planograms||{},planogramSkuMap:S.planogramSkuMap||{},updateList:S.updateList||[],capacities:S.capacities||{},capacityOriginal:S.capacityOriginal||{},capacityPicked:S.capacityPicked||{}}}
 $('exportProductData').onclick=()=>download('pickle-product-data.json',JSON.stringify(productDataPayload(),null,2),'application/json');
-$('importProductData').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{let d=JSON.parse(await f.text());if(d.kind!=='pickle-product-data'&&!d.products)throw new Error('Not Pickle Product Data');for(const [sku,p] of Object.entries(d.products||{})){let cur=S.products[sku]||{sku,upcs:[]};S.products[sku]={...cur,...p,upcs:[...new Set([...(cur.upcs||[]),...(p.upcs||[])].map(norm).filter(Boolean))]}}for(const [u,sku] of Object.entries(d.aliases||{}))S.aliases[norm(u)]=String(sku);for(const p of Object.values(S.products))for(const u of p.upcs||[])S.aliases[norm(u)]=p.sku;S.matchedPairs=[...(S.matchedPairs||[]),...(d.matchedPairs||[])];S.noBagSeen=[...(S.noBagSeen||[]),...(d.noBagSeen||[])];S.pendingPairs=[...(S.pendingPairs||[]),...(d.pendingPairs||[])];S.planograms={...(S.planograms||{}),...(d.planograms||{})};S.planogramSkuMap={...(S.planogramSkuMap||{}),...(d.planogramSkuMap||{})};let by=Object.fromEntries((S.updateList||[]).map(x=>[x.sku,x]));for(const x of d.updateList||[])by[x.sku]={...(by[x.sku]||{}),...x};S.updateList=Object.values(by);save();render();alert('Product Data imported and appended ✓')}catch(err){alert('Import failed: '+(err.message||err))}e.target.value=''};
+$('importProductData').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{let d=JSON.parse(await f.text());if(d.kind!=='pickle-product-data'&&!d.products)throw new Error('Not Pickle Product Data');for(const [sku,p] of Object.entries(d.products||{})){let cur=S.products[sku]||{sku,upcs:[]};S.products[sku]={...cur,...p,upcs:[...new Set([...(cur.upcs||[]),...(p.upcs||[])].map(norm).filter(Boolean))]}}for(const [u,sku] of Object.entries(d.aliases||{}))S.aliases[norm(u)]=String(sku);for(const p of Object.values(S.products))for(const u of p.upcs||[])S.aliases[norm(u)]=p.sku;S.matchedPairs=[...(S.matchedPairs||[]),...(d.matchedPairs||[])];S.noBagSeen=[...(S.noBagSeen||[]),...(d.noBagSeen||[])];S.pendingPairs=[...(S.pendingPairs||[]),...(d.pendingPairs||[])];S.planograms={...(S.planograms||{}),...(d.planograms||{})};S.planogramSkuMap={...(S.planogramSkuMap||{}),...(d.planogramSkuMap||{})};let by=Object.fromEntries((S.updateList||[]).map(x=>[x.sku,x]));for(const x of d.updateList||[])by[x.sku]={...(by[x.sku]||{}),...x};S.updateList=Object.values(by);S.capacities={...(S.capacities||{}),...(d.capacities||{})};S.capacityOriginal={...(S.capacityOriginal||{}),...(d.capacityOriginal||{})};S.capacityPicked={...(S.capacityPicked||{}),...(d.capacityPicked||{})};save();render();alert('Product Data imported and appended ✓')}catch(err){alert('Import failed: '+(err.message||err))}e.target.value=''};
+
+function csvCell(v){return '"'+String(v??'').replaceAll('"','""')+'"'}
+function parseCsvLine(line){
+ let a=[],s='',q=false;
+ for(let i=0;i<line.length;i++){let c=line[i];if(c==='"'){if(q&&line[i+1]==='"'){s+='"';i++}else q=!q}else if(c===','&&!q){a.push(s);s=''}else s+=c}
+ a.push(s);return a;
+}
+function exportProductMasterCsv(){
+ let rows=['sku,description,planogram,section,upcs,bag_upcs,shelf_upcs,sources,updated_at'];
+ for(const p of Object.values(S.products).filter(p=>!String(p.sku).startsWith('UPC:')).sort((a,b)=>String(a.sku).localeCompare(String(b.sku)))){
+   rows.push([p.sku,p.description||p.planogramDescription||'',p.planogram||S.planogramSkuMap?.[p.sku]||'',p.section||'',uniqueUpcs(p).join('|'),(p.bagUpcs||[]).map(norm).filter(Boolean).join('|'),(p.shelfUpcs||[]).map(norm).filter(Boolean).join('|'),(p.masterSources||[]).join('|'),p.masterUpdatedAt||''].map(csvCell).join(','));
+ }
+ download('pickle-master-sku-upc.csv',rows.join('\n'),'text/csv');
+}
+$('exportProductMasterCsv').onclick=exportProductMasterCsv;
+$('importProductMasterCsv').onchange=async e=>{
+ const f=e.target.files[0];if(!f)return;
+ try{
+  const lines=(await f.text()).split(/\r?\n/).filter(Boolean),head=parseCsvLine(lines.shift()).map(x=>x.trim().toLowerCase());
+  const ix=n=>head.indexOf(n);let n=0;
+  for(const line of lines){const c=parseCsvLine(line),sku=String(c[ix('sku')]||'').trim();if(!sku)continue;
+   let p=S.products[sku]||(S.products[sku]={sku,description:'Unknown product',section:'unknown',upcs:[]});
+   const desc=c[ix('description')]||'';if(desc)p.description=desc;
+   const plan=c[ix('planogram')]||'';if(plan){p.planogram=plan;S.planogramSkuMap[sku]=plan}
+   const sec=c[ix('section')]||'';if(sec)p.section=sec;
+   for(const u of String(c[ix('upcs')]||'').split('|').map(norm).filter(Boolean))addUpc(sku,u,'master-csv-import');
+   p.bagUpcs=[...new Set([...(p.bagUpcs||[]),...String(c[ix('bag_upcs')]||'').split('|').map(norm).filter(Boolean)])];
+   p.shelfUpcs=[...new Set([...(p.shelfUpcs||[]),...String(c[ix('shelf_upcs')]||'').split('|').map(norm).filter(Boolean)])];
+   p.masterSources=[...new Set([...(p.masterSources||[]),...String(c[ix('sources')]||'').split('|').filter(Boolean),'master-csv-import'])];
+   p.masterUpdatedAt=new Date().toISOString();n++;
+  }
+  save();render();alert(`Master SKU + UPC imported: ${n} SKUs ✓`);
+ }catch(err){alert('Master import failed: '+(err.message||err))}
+ e.target.value='';
+};
 $('exportJson').onclick=()=>download('pickle-backup.json',JSON.stringify({version:1,exported:new Date().toISOString(),...S},null,2));
 $('exportUpcCsv').onclick=exportUpcKey;
 $('exportCapCsv').onclick=()=>{let s='sku,description,capacity\n';for(const [sku,c] of Object.entries(S.capacities)){let p=S.products[sku]||{};s+=`${sku},"${(p.description||'').replaceAll('"','""')}",${c}\n`}download('pickle-capacities.csv',s,'text/csv')};
@@ -714,13 +782,13 @@ function showKnownBagPanel(p,code){
 function showUnknownBagPanel(code){
  bagMatchUPC=norm(code);bagVerifySKU='';hideBagMatch();
  $('bagMatchTitle').textContent='UNKNOWN BAG UPC';
- $('bagMatchStatus').innerHTML=`${bagMatchUPC}<br>No SKU match yet. Identify the item from the complete planogram feed / cat-litter catalog.`;
+ $('bagMatchStatus').innerHTML=`${bagMatchUPC}<br>No SKU match yet. Identify the item from the complete uploaded-planogram catalog.`;
  $('bagMatchBtn').style.display='';
  $('bagMatchBar').classList.add('show');
 }
 function showBagAction(code){
  const p=resolve(code);
- if(p&&!String(p.sku).startsWith('UPC:'))showKnownBagPanel(p,code);
+ if(p&&!String(p.sku).startsWith('UPC:')){addUpc(p.sku,code,'capacity-or-bag-scan');showKnownBagPanel(p,code);}
  else showUnknownBagPanel(code);
 }
 $('bagSameBtn').onclick=()=>{
@@ -743,14 +811,10 @@ $('bagWrongBtn').onclick=()=>{
 };
 
 function overstockPlanogramProducts(){
- return Object.values(S.products).filter(p=>{
-   if(String(p.sku).startsWith('UPC:'))return false;
-   if(!(S.planogramSkuMap?.[p.sku]||p.planogram))return false;
-   const z=((p.description||'')+' '+(p.section||'')+' '+(p.planogram||S.planogramSkuMap?.[p.sku]||'')).toUpperCase();
-   const litter=/LITTER|CAT LIT|KITTY LIT|CLUMP|CAT PAIL/.test(z);
-   const feed=/DOG|CAT|EQUINE|HORSE|CATTLE|LIVESTOCK|CHICKEN|POULTRY|BIRD|FEED|FOOD/.test(z);
-   return litter||feed||weightOf(p.description||'')!=null;
- });
+ // UPC correction is universal: every SKU indexed from every uploaded planogram is eligible.
+ return Object.values(S.products).filter(p=>
+   !String(p.sku).startsWith('UPC:') && !!(S.planogramSkuMap?.[p.sku]||p.planogram)
+ );
 }
 function countSelect(el,items,keyFn,label,keep=''){
  const m={};items.forEach(p=>{const k=keyFn(p);if(k)m[k]=(m[k]||0)+1});
@@ -765,10 +829,10 @@ function renderBagPicker(){
  let f=all.filter(x=>!a.value||animalTypeOf(x)===a.value);
  countSelect(b,f,brandLabelOf,'BRAND',bv);
  f=f.filter(x=>!b.value||brandLabelOf(x)===b.value);
- countSelect(w,f,x=>weightOf(x.description)+' LB','WEIGHT',wv);
- f=f.filter(x=>!w.value||(weightOf(x.description)+' LB')===w.value);
- const opts=f.map(x=>({v:x.sku,t:`${productNameOf(x)} · ${weightOf(x.description)} LB · SKU ${x.sku}`})).sort((x,y)=>x.t.localeCompare(y.t));
- pr.innerHTML=`<option value="">BAG / PRODUCT (${opts.length})</option>`+opts.map(x=>`<option value="${x.v}">${x.t}</option>`).join('');
+ countSelect(w,f,x=>{const z=weightOf(x.description);return z==null?'WEIGHT NOT LISTED':z+' LB'},'WEIGHT',wv);
+ f=f.filter(x=>{const z=weightOf(x.description),lab=z==null?'WEIGHT NOT LISTED':z+' LB';return !w.value||lab===w.value});
+ const opts=f.map(x=>({v:x.sku,t:`${productNameOf(x)} · ${weightOf(x.description)==null?'weight not listed':weightOf(x.description)+' LB'} · SKU ${x.sku}`})).sort((x,y)=>x.t.localeCompare(y.t));
+ pr.innerHTML=`<option value="">ITEM / PRODUCT (${opts.length})</option>`+opts.map(x=>`<option value="${x.v}">${x.t}</option>`).join('');
  if(opts.some(x=>x.v===pv))pr.value=pv;
  const sel=S.products[pr.value];
  $('bagPickerConfirm').disabled=!sel;
@@ -776,13 +840,16 @@ function renderBagPicker(){
 }
 function openBagMatchPicker(){
  const items=overstockPlanogramProducts();
- if(!items.length){alert('No planogram feed/litter items are indexed yet. Import planograms first.');return}
+ if(!items.length){alert('No planogram SKUs are indexed yet. Import planograms first.');return}
  hideBagMatch();$('bagPickerUPC').textContent='SCANNED BAG UPC '+bagMatchUPC;
  ['bagAnimal','bagBrand','bagWeight','bagProduct'].forEach(id=>$(id).value='');
  renderBagPicker();$('bagPicker').classList.add('show');
 }
 $('bagMatchBtn').onclick=openBagMatchPicker;
-['bagAnimal','bagBrand','bagWeight','bagProduct'].forEach(id=>$(id).onchange=renderBagPicker);
+$('bagAnimal').onchange=()=>{$('bagBrand').value='';$('bagWeight').value='';$('bagProduct').value='';renderBagPicker()};
+$('bagBrand').onchange=()=>{$('bagWeight').value='';$('bagProduct').value='';renderBagPicker()};
+$('bagWeight').onchange=()=>{$('bagProduct').value='';renderBagPicker()};
+$('bagProduct').onchange=renderBagPicker;
 $('bagPickerCancel').onclick=()=>{$('bagPicker').classList.remove('show');showUnknownBagPanel(bagMatchUPC)};
 $('bagPickerConfirm').onclick=()=>{
  const sku=$('bagProduct').value,p=S.products[sku],code=bagMatchUPC;
@@ -796,11 +863,13 @@ $('bagPickerConfirm').onclick=()=>{
    old.upcs=(old.upcs||[]).filter(u=>norm(u)!==code);
    old.bagUpcs=(old.bagUpcs||[]).filter(u=>norm(u)!==code);
    old.shelfUpcs=(old.shelfUpcs||[]).filter(u=>norm(u)!==code);
-   S.matchedPairs=(S.matchedPairs||[]).filter(x=>!(String(x.sku)===String(oldSku)&&norm(x.bag)===code));
+   S.matchedPairs=(S.matchedPairs||[]).filter(x=>!(String(x.sku)===String(oldSku)&&(norm(x.bag)===code||norm(x.shelf)===code)));
+   old.masterUpdatedAt=new Date().toISOString();
+   old.masterSources=[...new Set([...(old.masterSources||[]),'upc-correction'])];
  }
  if(S.aliases?.[code])delete S.aliases[code];
  const before=uniqueUpcs(p);
- addUpc(sku,code);
+ addUpc(sku,code,'physical-bag-scan');
  window._correctingUPCFromSku=null;
  p.bagUpcs=[...new Set([...(p.bagUpcs||[]),code])];
  p.upcVerified=(before.length&&before.some(u=>u!==code))?'alternate':'physical-bag';
