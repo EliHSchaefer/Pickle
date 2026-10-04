@@ -71,7 +71,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   </div>
 </div>
 <div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v49</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button></div>
+<header><div class="brand"><b>🥒 Pickle v51</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
 <nav id="tabs">
 <button class="tab active" data-v="capacity">Capacity</button>
 <button class="tab" data-v="packing">Packing Breakdown</button>
@@ -210,15 +210,53 @@ for(const p of Object.values(S.products))for(const u of p.upcs||[])S.aliases[nor
 function flash(t='SCAN RECEIVED'){let f=$('scanFlash');f.textContent=t;f.classList.add('show');setTimeout(()=>f.classList.remove('show'),650)}
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab,.view').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.v).classList.add('active');render()});
 function activeView(){return document.querySelector('.view.active')?.id||'capacity'}
-let scanBuf='',scanTimer=0;
+let scanBuf='',scanTimer=0,scanLastKeyAt=0;
+function setScannerStatus(t){const x=$('scannerStatus');if(x)x.textContent=t}
+function resetHidBuffer(){scanBuf='';clearTimeout(scanTimer);scanTimer=0}
+function submitHidBuffer(reason='HID'){
+ const x=scanBuf;resetHidBuffer();
+ if(x.length<6)return false;
+ setScannerStatus('Bluetooth scan ✓');
+ flash('BLUETOOTH UPC ✓');
+ handleScan(x);
+ setTimeout(()=>setScannerStatus('Bluetooth/HID ready'),900);
+ return true;
+}
+function armHidAutoSubmit(){
+ clearTimeout(scanTimer);
+ // Some Bluetooth scanners on iPhone do not deliver their configured Enter suffix to Safari.
+ // A complete UPC burst therefore auto-submits after a short idle gap.
+ scanTimer=setTimeout(()=>{if(scanBuf.length>=8)submitHidBuffer('idle') ; else resetHidBuffer()},450);
+}
 document.addEventListener('keydown',e=>{
+ // Scanner keystrokes must work even while a select/button has focus. Only ignore our true text-entry boxes.
  const el=document.activeElement;
  if(el && ['manualScan','upcA','upcB'].includes(el.id))return;
- if(e.key==='Enter'){if(scanBuf.length>=4){let x=scanBuf;scanBuf='';clearTimeout(scanTimer);handleScan(x);e.preventDefault()}return}
- if(e.key.length===1 && /[0-9]/.test(e.key)){scanBuf+=e.key;clearTimeout(scanTimer);scanTimer=setTimeout(()=>scanBuf='',180)}
-});
+ const k=e.key;
+ if(k==='Enter'||k==='NumpadEnter'||k==='Tab'){
+   if(scanBuf.length>=6){e.preventDefault();e.stopPropagation();submitHidBuffer(k);}
+   return;
+ }
+ if(k==='Escape'){resetHidBuffer();return}
+ if(k && k.length===1 && /[0-9]/.test(k)){
+   const now=Date.now();
+   // Human taps are slow; scanner bursts are fast. A long pause starts a fresh candidate barcode.
+   if(scanBuf && now-scanLastKeyAt>700)scanBuf='';
+   scanLastKeyAt=now;scanBuf+=k;armHidAutoSubmit();
+ }
+},true);
+// iOS/Safari can occasionally surface HID digits as beforeinput instead of ordinary keydown.
+document.addEventListener('beforeinput',e=>{
+ const el=document.activeElement;
+ if(el && ['manualScan','upcA','upcB'].includes(el.id))return;
+ const d=String(e.data||'');
+ if(/^\d+$/.test(d) && d.length>=6){
+   resetHidBuffer();scanBuf=d;armHidAutoSubmit();setScannerStatus('Bluetooth data…');
+ }
+},true);
 $('manualScanBtn').onclick=()=>{handleScan($('manualScan').value);$('manualScan').value=''};
 $('manualScan').onkeydown=e=>{if(e.key==='Enter'){$('manualScanBtn').click()}};
+$('hidTestBtn').onclick=()=>{document.activeElement?.blur();resetHidBuffer();setScannerStatus('SCAN NOW…');flash('BLUETOOTH SCANNER ARMED')};
 let modalCtx=null;
 function handleScan(raw){
  let code=norm(raw);if(!code)return;flash();
@@ -649,108 +687,66 @@ $('clearUpcKey').onclick=()=>{
 };
 
 
-// ---- v42 one-shot phone camera barcode scanner ----------------------------
+// ---- v50 repaired one-shot phone camera scanner ---------------------------
 let cameraStream=null,cameraRunning=false,cameraBusy=false,cameraDetector=null,cameraRAF=0,cameraFallbackReader=null;
-
 function stopCameraScan(msg=''){
-  cameraRunning=false;
-  cancelAnimationFrame(cameraRAF);
-  cameraRAF=0;
-  if(cameraFallbackReader){try{cameraFallbackReader.reset()}catch(e){} cameraFallbackReader=null}
-  if(cameraStream){for(const tr of cameraStream.getTracks())tr.stop();cameraStream=null}
-  const v=$('cameraVideo'); if(v){try{v.pause()}catch(e){} v.srcObject=null}
-  $('cameraOverlay')?.classList.remove('show');
-  if(msg) flash(msg);
+ cameraRunning=false;cancelAnimationFrame(cameraRAF);cameraRAF=0;
+ if(cameraFallbackReader){try{cameraFallbackReader.reset()}catch(e){}cameraFallbackReader=null}
+ if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());cameraStream=null}
+ const v=$('cameraVideo');if(v){try{v.pause()}catch(e){}v.srcObject=null}
+ $('cameraOverlay')?.classList.remove('show');if(msg)flash(msg);
 }
-
 async function acceptCameraBarcode(raw){
-  if(cameraBusy)return;
-  const code=norm(raw);
-  if(code.length<6)return;
-  cameraBusy=true;
-  stopCameraScan('UPC FOUND ✓');
-  // Feed the result into the exact same workflow as the Bluetooth HID scanner.
-  setTimeout(()=>{cameraBusy=false;handleScan(code)},80);
+ if(cameraBusy)return;const code=norm(raw);if(code.length<6)return;
+ cameraBusy=true;stopCameraScan('UPC FOUND ✓');setTimeout(()=>{cameraBusy=false;handleScan(code)},80);
 }
-
 async function nativeCameraLoop(){
-  if(!cameraRunning||!cameraDetector)return;
-  try{
-    const hits=await cameraDetector.detect($('cameraVideo'));
-    const hit=hits.find(x=>x.rawValue);
-    if(hit){await acceptCameraBarcode(hit.rawValue);return}
-  }catch(e){}
-  cameraRAF=requestAnimationFrame(nativeCameraLoop);
+ if(!cameraRunning||!cameraDetector)return;
+ try{const hits=await cameraDetector.detect($('cameraVideo'));if(hits?.[0]?.rawValue){acceptCameraBarcode(hits[0].rawValue);return}}catch(e){}
+ cameraRAF=requestAnimationFrame(nativeCameraLoop);
 }
-
-function loadZXing(){
-  return new Promise((resolve,reject)=>{
-    if(window.ZXingBrowser)return resolve();
-    const s=document.createElement('script');
-    s.src='https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js';
-    s.onload=resolve;s.onerror=()=>reject(new Error('Could not load barcode scanner library'));
-    document.head.appendChild(s);
-  });
+function loadZXingLibrary(){
+ return new Promise((resolve,reject)=>{
+  if(window.ZXing?.BrowserMultiFormatReader)return resolve();
+  const old=document.getElementById('pickleZXing');if(old)old.remove();
+  const s=document.createElement('script');s.id='pickleZXing';
+  s.src='https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js';
+  s.onload=()=>window.ZXing?.BrowserMultiFormatReader?resolve():reject(new Error('Barcode library loaded but reader was unavailable'));
+  s.onerror=()=>reject(new Error('Barcode library could not be loaded'));
+  document.head.appendChild(s);
+ });
 }
-
 async function startCameraScan(){
-  if(cameraRunning)return;
-  if(!navigator.mediaDevices?.getUserMedia){
-    alert('Camera scanning is not available in this browser. Bluetooth scanning still works.');
-    return;
-  }
+ if(cameraRunning)return;
+ const ov=$('cameraOverlay'),v=$('cameraVideo'),hint=$('cameraHint');
+ ov.classList.add('show');hint.textContent='REQUESTING CAMERA…';
+ // Let the overlay paint before Safari shows its permission sheet.
+ await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+ try{
+  if(!window.isSecureContext)throw new Error('Camera requires HTTPS');
+  if(!navigator.mediaDevices?.getUserMedia)throw new Error('This browser does not expose camera access');
   cameraBusy=false;
-  $('cameraOverlay').classList.add('show');
-  $('cameraHint').textContent='STARTING CAMERA…';
-  try{
-    cameraStream=await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},
-      audio:false
-    });
-    const v=$('cameraVideo');
-    v.srcObject=cameraStream;
-    await v.play();
-    cameraRunning=true;
-    $('cameraHint').textContent='ALIGN THE UPC BARCODE INSIDE THE BOX';
-
-    // Prefer the browser's native detector when available.
-    if('BarcodeDetector' in window){
-      try{
-        const supported=await BarcodeDetector.getSupportedFormats();
-        const formats=['upc_a','upc_e','ean_13','ean_8','code_128'].filter(x=>supported.includes(x));
-        cameraDetector=new BarcodeDetector(formats.length?{formats}:undefined);
-        nativeCameraLoop();
-        return;
-      }catch(e){cameraDetector=null}
-    }
-
-    // Safari/iPhone fallback: ZXing. It still uses the same one-shot behavior.
-    stopCameraScan();
-    $('cameraOverlay').classList.add('show');
-    $('cameraHint').textContent='LOADING CAMERA SCANNER…';
-    await loadZXing();
-    cameraRunning=true;
-    cameraFallbackReader=new ZXingBrowser.BrowserMultiFormatReader();
-    await cameraFallbackReader.decodeFromConstraints(
-      {video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false},
-      $('cameraVideo'),
-      (result,error,controls)=>{
-        if(result){
-          try{controls.stop()}catch(e){}
-          acceptCameraBarcode(result.getText ? result.getText() : result.text);
-        }
-      }
-    );
-    $('cameraHint').textContent='ALIGN THE UPC BARCODE INSIDE THE BOX';
-  }catch(err){
-    stopCameraScan();
-    alert('Could not start camera scanner: '+(err?.message||err)+'\n\nUse the GitHub Pages HTTPS version and allow Camera permission. Bluetooth scanning still works.');
+  cameraStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});
+  v.srcObject=cameraStream;v.setAttribute('playsinline','');v.muted=true;await v.play();cameraRunning=true;
+  hint.textContent='ALIGN A UPC INSIDE THE BOX';
+  if('BarcodeDetector' in window){
+   try{const supported=await BarcodeDetector.getSupportedFormats();const formats=['upc_a','upc_e','ean_13','ean_8','code_128'].filter(x=>supported.includes(x));cameraDetector=new BarcodeDetector(formats.length?{formats}:undefined);nativeCameraLoop();return}catch(e){cameraDetector=null}
   }
+  // iPhone/Safari: keep THIS preview open while ZXing reads frames from it.
+  hint.textContent='CAMERA READY · LOADING BARCODE READER…';
+  await loadZXingLibrary();
+  cameraFallbackReader=new ZXing.BrowserMultiFormatReader();
+  cameraFallbackReader.decodeFromVideoElementContinuously(v,(result,err)=>{
+   if(result){const txt=result.getText?result.getText():String(result.text||result);acceptCameraBarcode(txt)}
+  });
+  hint.textContent='ALIGN A UPC INSIDE THE BOX';
+ }catch(err){
+  stopCameraScan();alert('Camera scanner could not start: '+(err?.message||err)+'\n\nOn iPhone: open the GitHub Pages HTTPS site in Safari and allow Camera access for this website.');
+ }
 }
-$('cameraScanBtn').onclick=startCameraScan;
-$('cameraClose').onclick=()=>stopCameraScan();
+$('cameraScanBtn').addEventListener('click',startCameraScan);
+$('cameraClose').addEventListener('click',()=>stopCameraScan());
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&cameraRunning)stopCameraScan()});
-
 
 // ---- v46 live UPC/SKU mapper ----------------------------------------------
 let bagMatchUPC='',bagVerifySKU='';
