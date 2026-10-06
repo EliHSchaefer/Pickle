@@ -71,7 +71,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   </div>
 </div>
 <div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v55</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
+<header><div class="brand"><b>🥒 Pickle v56</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
 <nav id="tabs">
 <button class="tab active" data-v="capacity">Capacity</button>
 <button class="tab" data-v="packing">Packing Breakdown</button>
@@ -231,6 +231,7 @@ for(const p of Object.values(S.products))for(const u of p.upcs||[])S.aliases[nor
 function flash(t='SCAN RECEIVED'){let f=$('scanFlash');f.textContent=t;f.classList.add('show');setTimeout(()=>f.classList.remove('show'),650)}
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab,.view').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.v).classList.add('active');render()});
 function activeView(){return document.querySelector('.view.active')?.id||'capacity'}
+let bagMatchUPC='',bagVerifySKU='';
 let scanBuf='',scanTimer=0,scanLastKeyAt=0,scanLastCode='',scanLastAt=0;
 function setScannerStatus(t){const x=$('scannerStatus');if(x)x.textContent=t}
 function resetHidBuffer(){scanBuf='';clearTimeout(scanTimer);scanTimer=0}
@@ -239,7 +240,7 @@ function dispatchBarcode(raw,source='Bluetooth'){
  const now=Date.now();if(code===scanLastCode&&now-scanLastAt<650)return true;
  scanLastCode=code;scanLastAt=now;resetHidBuffer();
  setScannerStatus(source+' · '+code+' ✓');
- try{handleScan(code)}catch(err){console.error(err);alert('Scan '+code+' reached Pickle but processing failed: '+(err?.message||err));return false}
+ try{handleScan(code)}catch(err){console.error(err);alert('Barcode received ✓\n'+code+'\n\nPickle processing error: '+(err?.message||err));return false}
  setTimeout(()=>setScannerStatus('Bluetooth/HID ready'),1200);return true
 }
 function queueHid(){clearTimeout(scanTimer);scanTimer=setTimeout(()=>{if(scanBuf.length>=6)dispatchBarcode(scanBuf);else resetHidBuffer()},220)}
@@ -766,8 +767,7 @@ $('cameraScanBtn').addEventListener('click',startCameraScan);
 $('cameraClose').addEventListener('click',()=>stopCameraScan());
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&cameraRunning)stopCameraScan()});
 
-// ---- v46 live UPC/SKU mapper ----------------------------------------------
-let bagMatchUPC='',bagVerifySKU='';
+// ---- live UPC/SKU mapper --------------------------------------------------
 
 function uniqueUpcs(p){return [...new Set((p?.upcs||[]).map(norm).filter(Boolean))]}
 function priorBagConfirmation(p){
