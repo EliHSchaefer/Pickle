@@ -71,10 +71,11 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   </div>
 </div>
 <div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v54</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
+<header><div class="brand"><b>🥒 Pickle v55</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
 <nav id="tabs">
 <button class="tab active" data-v="capacity">Capacity</button>
 <button class="tab" data-v="packing">Packing Breakdown</button>
+<button class="tab" data-v="freightSort">Freight Sort Map</button>
 <button class="tab" data-v="allocation">Floor Allocation</button>
 <button class="tab" data-v="upc">UPC Key</button>
 <button class="tab" data-v="master">SKU Master</button>
@@ -108,6 +109,26 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 <div id="wholeTruckBreakdown"></div></div>
 <div class="card"><h3>Planogram / aisle distribution</h3><div class="muted small">Based on SKU→planogram mapping. Pounds use encoded bag weights; unknown weights are never guessed.</div><div id="aisleBreakdown"></div></div><div class="card"><h3>Brand distribution by aisle</h3><div id="brandBreakdown"></div></div>
  <div class="card"><h3>Shipment detail</h3><div id="packingRows" class="scroll"></div></div>
+</section>
+
+
+<section class="view" id="freightSort">
+ <div class="card">
+  <h2>Freight Sort Map</h2>
+  <div class="muted">Load one or more packing lists. Pickle totals the first description key/prefix across the files. Assign each key to an operational quadrant once; the assignment is saved and reused on later trucks.</div>
+  <input id="freightHistoryFiles" type="file" accept=".pdf" multiple>
+  <div class="small muted" id="freightHistoryStatus" style="margin-top:8px">No comparison packing lists loaded yet.</div>
+ </div>
+ <div class="card">
+  <h3>Operational quadrants</h3>
+  <div class="muted small">These are sorting/staging buckets, not official merchandise departments. Change any key that Pickle guesses wrong.</div>
+  <div id="freightQuadrantSummary"></div>
+ </div>
+ <div class="card">
+  <h3>Brand / description keys</h3>
+  <div class="muted small">TOTAL = shipped units summed across the packing lists loaded on this page. FILES = how many of those trucks contained the key.</div>
+  <div id="freightBrandKeys" class="scroll"></div>
+ </div>
 </section>
 
 <section class="view" id="allocation">
@@ -194,7 +215,7 @@ const KEY='pickleLiteV1';
 let S={capacities:{},capacityOriginal:{},capacityPicked:{},aliases:{},products:{},pick:null,packing:null,mappingMeta:null};
 for(const p of BOOT.catalog) S.products[p.sku]={...p,upcs:p.upc?[String(p.upc)]:[]};
 function load(){try{const x=JSON.parse(localStorage.getItem(KEY)||'null');if(x){S={...S,...x}; for(const p of BOOT.catalog){S.products[p.sku]={...p,...(S.products[p.sku]||{}),upcs:[...new Set([...(p.upc?[String(p.upc)]:[]),...((S.products[p.sku]||{}).upcs||[])])]}}}}catch(e){}}
-function ensureV30(){S.mappingMeta=S.mappingMeta||null;S.planograms=S.planograms||{};S.planogramSkuMap=S.planogramSkuMap||{};S.capacityOriginal=S.capacityOriginal||{};S.capacityPicked=S.capacityPicked||{}}ensureV30();
+function ensureV30(){S.mappingMeta=S.mappingMeta||null;S.planograms=S.planograms||{};S.planogramSkuMap=S.planogramSkuMap||{};S.freightSortMap=S.freightSortMap||{};S.freightHistory=S.freightHistory||[];S.capacityOriginal=S.capacityOriginal||{};S.capacityPicked=S.capacityPicked||{}}ensureV30();
 function save(){localStorage.setItem(KEY,JSON.stringify(S))}
 load();
 const $=id=>document.getElementById(id), norm=x=>String(x||'').replace(/\D/g,'').replace(/^0+(?=\d)/,'');
@@ -210,52 +231,39 @@ for(const p of Object.values(S.products))for(const u of p.upcs||[])S.aliases[nor
 function flash(t='SCAN RECEIVED'){let f=$('scanFlash');f.textContent=t;f.classList.add('show');setTimeout(()=>f.classList.remove('show'),650)}
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab,.view').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.v).classList.add('active');render()});
 function activeView(){return document.querySelector('.view.active')?.id||'capacity'}
-let scanBuf='',scanTimer=0,scanLastKeyAt=0;
+let scanBuf='',scanTimer=0,scanLastKeyAt=0,scanLastCode='',scanLastAt=0;
 function setScannerStatus(t){const x=$('scannerStatus');if(x)x.textContent=t}
 function resetHidBuffer(){scanBuf='';clearTimeout(scanTimer);scanTimer=0}
-function submitHidBuffer(reason='HID'){
- const x=scanBuf;resetHidBuffer();
- if(x.length<6)return false;
- setScannerStatus('Bluetooth scan ✓');
- flash('BLUETOOTH UPC ✓');
- handleScan(x);
- setTimeout(()=>setScannerStatus('Bluetooth/HID ready'),900);
- return true;
+function dispatchBarcode(raw,source='Bluetooth'){
+ const code=norm(raw);if(!/^\d{6,18}$/.test(code)){setScannerStatus('Barcode not recognized');return false}
+ const now=Date.now();if(code===scanLastCode&&now-scanLastAt<650)return true;
+ scanLastCode=code;scanLastAt=now;resetHidBuffer();
+ setScannerStatus(source+' · '+code+' ✓');
+ try{handleScan(code)}catch(err){console.error(err);alert('Scan '+code+' reached Pickle but processing failed: '+(err?.message||err));return false}
+ setTimeout(()=>setScannerStatus('Bluetooth/HID ready'),1200);return true
 }
-function armHidAutoSubmit(){
- clearTimeout(scanTimer);
- // Some Bluetooth scanners on iPhone do not deliver their configured Enter suffix to Safari.
- // A complete UPC burst therefore auto-submits after a short idle gap.
- scanTimer=setTimeout(()=>{if(scanBuf.length>=8)submitHidBuffer('idle') ; else resetHidBuffer()},450);
-}
+function queueHid(){clearTimeout(scanTimer);scanTimer=setTimeout(()=>{if(scanBuf.length>=6)dispatchBarcode(scanBuf);else resetHidBuffer()},220)}
 document.addEventListener('keydown',e=>{
- // Scanner keystrokes must work even while a select/button has focus. Only ignore our true text-entry boxes.
- const el=document.activeElement;
- if(el && ['manualScan','upcA','upcB'].includes(el.id))return;
+ if(e.ctrlKey||e.metaKey||e.altKey)return;
  const k=e.key;
- if(k==='Enter'||k==='NumpadEnter'||k==='Tab'){
-   if(scanBuf.length>=6){e.preventDefault();e.stopPropagation();submitHidBuffer(k);}
-   return;
+ // Let the manual UPC box behave like a normal field.
+ if(document.activeElement?.id==='manualScan')return;
+ if((k==='Enter'||k==='NumpadEnter'||k==='Tab')&&scanBuf){
+   if(scanBuf.length>=6){e.preventDefault();dispatchBarcode(scanBuf)}
+   else resetHidBuffer();return
  }
- if(k==='Escape'){resetHidBuffer();return}
- if(k && k.length===1 && /[0-9]/.test(k)){
-   const now=Date.now();
-   // Human taps are slow; scanner bursts are fast. A long pause starts a fresh candidate barcode.
-   if(scanBuf && now-scanLastKeyAt>700)scanBuf='';
-   scanLastKeyAt=now;scanBuf+=k;armHidAutoSubmit();
+ if(/^\d$/.test(k)){
+   const now=Date.now();if(scanBuf&&now-scanLastKeyAt>500)scanBuf='';
+   scanLastKeyAt=now;scanBuf+=k;if(scanBuf.length>18)scanBuf=scanBuf.slice(-18);queueHid();
  }
 },true);
-// iOS/Safari can occasionally surface HID digits as beforeinput instead of ordinary keydown.
 document.addEventListener('beforeinput',e=>{
- const el=document.activeElement;
- if(el && ['manualScan','upcA','upcB'].includes(el.id))return;
- const d=String(e.data||'');
- if(/^\d+$/.test(d) && d.length>=6){
-   resetHidBuffer();scanBuf=d;armHidAutoSubmit();setScannerStatus('Bluetooth data…');
- }
+ if(document.activeElement?.id==='manualScan')return;
+ const d=String(e.data||'').replace(/\D/g,'');
+ if(d.length>=6){e.preventDefault();dispatchBarcode(d)}
 },true);
-$('manualScanBtn').onclick=()=>{const c=$('manualScan').value;$('manualScan').value='';handleScan(c)};
-$('manualScan').onkeydown=e=>{if(e.key==='Enter'){$('manualScanBtn').click()}};
+$('manualScanBtn').onclick=()=>{const c=$('manualScan').value;$('manualScan').value='';dispatchBarcode(c,'Manual')};
+$('manualScan').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();$('manualScanBtn').click()}};
 $('hidTestBtn').onclick=()=>{document.activeElement?.blur();resetHidBuffer();setScannerStatus('SCAN NOW…');flash('BLUETOOTH SCANNER ARMED')};
 let modalCtx=null;
 function handleScan(raw){
@@ -314,7 +322,7 @@ function setCapacityAndPick(n){n=+n;let sku=modalCtx.p.sku;S.capacityOriginal[sk
 function commitCapacityPick(n){n=+n;let sku=modalCtx.p.sku,remaining=+S.capacities[sku]||0,pick=Math.min(n,remaining);S.capacityPicked[sku]=(+S.capacityPicked[sku]||0)+pick;S.capacities[sku]=Math.max(0,remaining-pick);save();let left=S.capacities[sku];$('modalPrompt').innerHTML=left?`<span class="remainingHero">${left}</span> BAGS STILL NEEDED`:`<span class="remainingHero">FILLED ✓</span>`;$('stageTitle').textContent=left?'PICK MORE NOW, OR SCAN THE NEXT BAG':'CAPACITY FILLED';$('pickedNote').textContent=`Picked ${pick} now · ${S.capacityPicked[sku]} total picked this cycle · original need ${S.capacityOriginal[sku]}`;renderNumberButtons(left,x=>commitCapacityPick(x),true);render();flash(left?'CAPACITY UPDATED':'CAPACITY FILLED ✓')}
 function commitPickList(n){n=+n;modalCtx.row.picked=(modalCtx.row.picked||0)+n;modalCtx.row.remaining=Math.max(0,modalCtx.row.qty-modalCtx.row.picked);save();$('amountModal').classList.remove('show');render();flash('READY — SCAN NEXT BAG')}
 $('closeModal').onclick=()=> $('amountModal').classList.remove('show');
-function render(){renderPlanograms();renderTouchFinder();renderMapping();renderStats();renderCaps();renderMaster();renderUpcs();renderUpdateList();renderPick();renderRack();renderPacking();renderAllocation()}
+function render(){renderPlanograms();renderTouchFinder();renderMapping();renderStats();renderCaps();renderMaster();renderUpcs();renderUpdateList();renderPick();renderRack();renderPacking();renderFreightSort();renderAllocation()}
 function renderStats(){$('capCount').textContent=Object.keys(S.capacities).length;$('upcCount').textContent=Object.keys(S.aliases).length;$('masterCount').textContent=Object.keys(S.products).length}
 function itemHtml(p,extra=''){return `<div class="item section-${p.section||'unknown'}"><b>${p.description||p.sku}</b><div class="small muted">SKU ${p.sku} · ${(p.upcs||[]).join(' / ')||'UPC ?'} · ${p.section||'unknown'} ${extra}</div></div>`}
 function renderCaps(){let q=($('capSearch')?.value||'').toUpperCase();let arr=Object.entries(S.capacities).map(([sku,cap])=>[S.products[sku]||{sku,description:sku},cap]).filter(([p])=>(p.description+p.sku+(p.upcs||[]).join()).toUpperCase().includes(q));$('capList').innerHTML=arr.length?arr.map(([p,c])=>itemHtml(p,`· REMAINING <b>${c}</b>${S.capacityOriginal[p.sku]!=null?` · ORIGINAL ${S.capacityOriginal[p.sku]} · PICKED ${S.capacityPicked[p.sku]||0}`:''}`)).join(''):'<div class="item muted">No capacities recorded yet. Scan a bag.</div>'}
@@ -892,66 +900,6 @@ $('bagPickerConfirm').onclick=()=>{
  flash('UPC → SKU ATTACHED / CORRECTED ✓');
 };
 
-// ---- v52 authoritative Bluetooth/HID dispatcher ---------------------------
-// The old path could recognize the barcode and flash "scan received" without reliably
-// dispatching it into the current product workflow. This capture-phase listener owns
-// physical keyboard-wedge scans and calls the current handleScan() exactly once.
-let v52HidBuffer='',v52HidTimer=0,v52LastDispatch='',v52LastAt=0;
-function v52LooksBarcode(s){return /^[0-9]{6,18}$/.test(String(s||'').trim())}
-function v52Dispatch(raw){
- const code=norm(raw||'');
- if(!v52LooksBarcode(code))return false;
- const now=Date.now();
- if(code===v52LastDispatch && now-v52LastAt<700)return true;
- v52LastDispatch=code;v52LastAt=now;
- clearTimeout(v52HidTimer);v52HidTimer=0;v52HidBuffer='';
- const st=$('scannerStatus');if(st)st.textContent='Bluetooth UPC '+code+' ✓';
- try{
-   // Always resolve the latest function, after all v49-v51 wrappers have loaded.
-   window.handleScan(code);
- }catch(err){
-   console.error('HID dispatch failed',err);
-   alert('Barcode received ('+code+') but Pickle could not process it: '+(err?.message||err));
- }
- return true;
-}
-function v52IdleSubmit(){
- clearTimeout(v52HidTimer);
- v52HidTimer=setTimeout(()=>{if(v52LooksBarcode(v52HidBuffer))v52Dispatch(v52HidBuffer);else v52HidBuffer=''},180);
-}
-document.addEventListener('keydown',e=>{
- // Do not steal typing inside file inputs. Scanner digits elsewhere are global.
- if(e.ctrlKey||e.metaKey||e.altKey)return;
- const k=e.key;
- if((k==='Enter'||k==='Tab'||k==='NumpadEnter')&&v52HidBuffer){
-   if(v52LooksBarcode(v52HidBuffer)){
-     e.preventDefault();e.stopImmediatePropagation();v52Dispatch(v52HidBuffer);
-   }else v52HidBuffer='';
-   return;
- }
- if(/^[0-9]$/.test(k)){
-   // Barcode scanners emit digits rapidly. Capture them before legacy listeners.
-   v52HidBuffer+=k;
-   if(v52HidBuffer.length>18)v52HidBuffer=v52HidBuffer.slice(-18);
-   v52IdleSubmit();
-   e.stopImmediatePropagation();
- }
-},true);
-
-// Also support scanners/browsers that emit the whole UPC through beforeinput/input.
-document.addEventListener('beforeinput',e=>{
- const d=String(e.data||'').replace(/\D/g,'');
- if(d.length>=6 && v52LooksBarcode(d)){e.preventDefault();v52Dispatch(d)}
-},true);
-
-// HID READY now explicitly resets scanner state/focus.
-const v52Ready=$('hidReady');
-if(v52Ready)v52Ready.onclick=()=>{
- document.activeElement?.blur?.();v52HidBuffer='';clearTimeout(v52HidTimer);
- const st=$('scannerStatus');if(st)st.textContent='Bluetooth/HID armed';
- flash('HID ARMED — SCAN NOW');
-};
-
 $('amountMatchBtn').onclick=()=>{
  const p=modalCtx?.p;if(!p)return;
  const code=norm(bagMatchUPC||(p.upcs||[])[0]||String(p.sku).replace(/^UPC:/,''));
@@ -960,6 +908,73 @@ $('amountMatchBtn').onclick=()=>{
  bagVerifySKU=String(p.sku).startsWith('UPC:')?'':p.sku;
  window._correctingUPCFromSku=bagVerifySKU||null;
  openBagMatchPicker();
+};
+
+const FREIGHT_QUADRANTS=[
+ 'UNASSIGNED',
+ 'FEED · SMALL BAGS / CANS · FLOOR',
+ 'FEED · BULK / BAGGED',
+ 'TRUCK & TRAILER',
+ 'FARM PARTS & PLUMBING',
+ 'TOOLS & SHOP',
+ 'OUTDOOR & SEASONAL',
+ 'PET · COLLARS / TOYS / ACCESSORIES',
+ 'LIVESTOCK · TACK / EQUIPMENT',
+ 'LIVESTOCK · HEALTH / PHARMACEUTICALS',
+ 'LAWN & GARDEN',
+ 'CLOTHING / FOOTWEAR',
+ 'OTHER'
+];
+function freightKey(desc){
+ let d=String(desc||'').trim().replace(/^[^A-Za-z0-9]+/,'');
+ let m=d.match(/^([A-Za-z0-9&'-]+)/);return (m?.[1]||'UNKNOWN').toUpperCase()
+}
+function guessFreightQuadrant(key,descs=[]){
+ const k=key.toUpperCase(),d=descs.join(' ').toUpperCase();
+ if(/^(PPLN|4HLTH|FRSK|SD|ONE|IAMS|TOTW|BB|DM|DIAM|WHLSM|PDGR|KNP|KNB|P&C|FF|SHEBA|TMPTN|CT)$/.test(k) && /OZ|LB/.test(d))
+   return /(?:\b[1-9](?:\.\d+)?LB\b|OZ|CIG|PATE|STW|5\.5OZ|13\.2OZ)/.test(d)?'FEED · SMALL BAGS / CANS · FLOOR':'FEED · BULK / BAGGED';
+ if(/^(PUR|NUT|DMR|NBO|SL|TC|SPMX|RR)$/.test(k) && /LB|PLT|CRM|CRMBL|LAYER|STRGR|FEED|RATION|HAY/.test(d))return 'FEED · BULK / BAGGED';
+ if(k==='RET'||/COLLAR|LEASH|DOG TOY|TRAINING PAD|CRATE|PET TOY/.test(d))return 'PET · COLLARS / TOYS / ACCESSORIES';
+ if(k==='CNL'){
+   if(/PTO|DRAW|HITCH|TOPLINK|PIN|ADAPTER|BEARING|CHAIN|WIRE SET/.test(d))return 'FARM PARTS & PLUMBING';
+   return 'FARM PARTS & PLUMBING';
+ }
+ if(k==='TRV'||/TRAILER|TIRE|TUBE|JACK|TIE DOWN|RECEIVER LOCK/.test(d))return 'TRUCK & TRAILER';
+ if(/^(DW|DEWALT|JS|CRESCENT|CLC|WS)$/.test(k)||/WRENCH|PLIERS|SOCKET|BLADE|GRIND|TOOL|COMPRESSOR/.test(d))return 'TOOLS & SHOP';
+ if(/VETERICYN|IVERMECTIN|DEWORM|WOUND|SYRINGE|NEEDLE|CASTRAT|INSECTICIDE|POUR-ON|PINK[E]?YE|BUTE|LINIMENT/.test(d))return 'LIVESTOCK · HEALTH / PHARMACEUTICALS';
+ if(/HALTER|TACK|HOOF|HORSE|LEAD |FLY MASK|CURRY|SADDLE/.test(d))return 'LIVESTOCK · TACK / EQUIPMENT';
+ if(/WEED|GRASS|SEED|FERT|PRUNER|LOPPER|SHOVEL|RAKE|GARDEN/.test(d))return 'LAWN & GARDEN';
+ if(/DEER|HUNT|FIRELOG|HEATER|SNOW|SEASON|OUTDOOR/.test(d))return 'OUTDOOR & SEASONAL';
+ if(/BOOT|PANT|SHIRT|GLOVE|HAT|BELT/.test(d))return 'CLOTHING / FOOTWEAR';
+ return 'UNASSIGNED'
+}
+function freightSourceRows(){
+ let packs=(S.freightHistory||[]).flatMap(x=>(x.rows||[]).map(r=>({...r,file:x.name})));
+ if(S.packing?.rows?.length)packs=packs.concat(S.packing.rows.map(r=>({...r,file:S.packing.name||'Current packing list'})));
+ return packs
+}
+function freightGroups(){
+ let g={};for(const r of freightSourceRows()){let key=freightKey(r.description),x=g[key]||(g[key]={key,qty:0,files:new Set(),descs:[],rows:0});x.qty+=+r.shipped||0;x.rows++;x.files.add(r.file||'?');if(x.descs.length<8&&!x.descs.includes(r.description))x.descs.push(r.description)}
+ return Object.values(g).map(x=>({...x,files:[...x.files]})).sort((a,b)=>b.qty-a.qty)
+}
+function renderFreightSort(){
+ const box=$('freightBrandKeys'),sum=$('freightQuadrantSummary');if(!box||!sum)return;
+ let gs=freightGroups();if(!gs.length){sum.innerHTML='<div class="muted">Load packing lists above, or load the current Packing Breakdown.</div>';box.innerHTML='';return}
+ let q={};for(const g of gs){let cat=S.freightSortMap[g.key]||guessFreightQuadrant(g.key,g.descs);q[cat]=(q[cat]||0)+g.qty}
+ let total=gs.reduce((n,g)=>n+g.qty,0);
+ sum.innerHTML='<div class="grid">'+Object.entries(q).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="stat"><span>${k}</span><b>${Math.round(v*10)/10}</b><small>${total?Math.round(v/total*100):0}% units</small></div>`).join('')+'</div>';
+ box.innerHTML=gs.map(g=>{
+   let cat=S.freightSortMap[g.key]||guessFreightQuadrant(g.key,g.descs);
+   let opts=FREIGHT_QUADRANTS.map(x=>`<option value="${x}" ${x===cat?'selected':''}>${x}</option>`).join('');
+   return `<div class="item"><div class="row"><div class="grow"><b style="font-size:18px">${g.key}</b><div class="small muted">${g.qty} shipped units · ${g.files.length} file${g.files.length===1?'':'s'} · ${g.rows} SKU rows</div></div><select class="freightCat" data-key="${g.key}" style="max-width:48%">${opts}</select></div><div class="small" style="margin-top:6px">${g.descs.slice(0,4).join(' · ')}</div></div>`
+ }).join('');
+ box.querySelectorAll('.freightCat').forEach(sel=>sel.onchange=()=>{S.freightSortMap[sel.dataset.key]=sel.value;save();renderFreightSort()});
+}
+$('freightHistoryFiles').onchange=async e=>{
+ let files=[...e.target.files];if(!files.length)return;
+ let loaded=[];
+ for(const f of files){let t=await pdfText(f),rows=parsePacking(t);if(rows.length)loaded.push({name:f.name,rows})}
+ S.freightHistory=loaded;save();$('freightHistoryStatus').textContent=`${loaded.length} packing lists · ${loaded.reduce((n,x)=>n+x.rows.length,0)} SKU rows loaded`;renderFreightSort()
 };
 
 render();
