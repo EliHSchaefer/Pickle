@@ -71,7 +71,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   </div>
 </div>
 <div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v62</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
+<header><div class="brand"><b>🥒 Pickle v63</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
 <nav id="tabs">
 <button class="tab active" data-v="capacity">Capacity Walk</button>
 <button class="tab" data-v="capacityPick">Capacity Pick</button>
@@ -194,7 +194,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
  <div id="rackList"></div>
 </section>
 <section class="view" id="pick">
- <div class="card"><h2>Pick List Upload</h2><input id="pickFile" type="file" accept=".pdf"><div class="muted small" style="margin-top:7px">Upload is optional. Capacity and packing modes work without it.</div></div>
+ <div class="card"><h2>Pick List Upload</h2><input id="pickFile" type="file" accept=".pdf"><div class="muted small" style="margin-top:7px">Upload is optional. Capacity and packing modes work without it.</div><button id="clearPickList" class="danger" type="button" style="width:100%;margin-top:12px;padding:13px;font-weight:900">CLEAR ACTIVE PICK LIST</button></div>
  <div class="card"><div class="grid"><div class="stat"><span>Items</span><b id="pickItems">0</b></div><div class="stat"><span>Remaining bags</span><b id="pickRemain">0</b></div></div></div><div class="card"><div id="pickRows"></div></div>
 </section>
 
@@ -229,8 +229,13 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   <button id="clearPackingFresh" class="danger" style="width:100%;margin-top:10px;padding:15px;font-weight:900">CLEAR PACKING LIST</button>
  </div>
  <div class="card">
+  <h3>Clear Pick List</h3>
+  <div class="muted small">Removes the active pick list used by Pick List Upload and Rack Mode. Product/UPC knowledge stays intact.</div>
+  <button id="clearPickFresh" class="danger" style="width:100%;margin-top:10px;padding:15px;font-weight:900">CLEAR PICK LIST</button>
+ </div>
+ <div class="card">
   <h3>Fresh Start · Both</h3>
-  <div class="muted small">Clears capacities and the current packing list together. UPC Key, SKU Master, matched UPC pairs, and product knowledge are preserved.</div>
+  <div class="muted small">Clears capacities, the current packing list, and the active pick list together. UPC Key, SKU Master, matched UPC pairs, and product knowledge are preserved.</div>
   <button id="clearBothFresh" class="danger" style="width:100%;margin-top:10px;padding:15px;font-weight:900">CLEAR BOTH / NEW CYCLE</button>
  </div>
 </section>
@@ -462,6 +467,10 @@ function tripleConfirmFresh(a,b,c){
 function clearCapacityData(){
  S.capacities={};S.capacityOriginal={};S.capacityPicked={};
 }
+function clearPickData(){
+ S.pick=null;
+ S.rackFilter={animal:'ALL',brand:'ALL',min:0,max:60};
+}
 function clearPackingData(){
  // Clear only temporary inbound/packing-session data.
  if('packing' in S)S.packing=[];
@@ -472,6 +481,14 @@ function clearPackingData(){
  if('packName' in S)S.packName='';
  if('packingMeta' in S)S.packingMeta=null;
 }
+$('clearPickList').onclick=()=>{
+ if(!confirm('Clear the active pick list used by Rack Mode? Product and UPC data will stay.'))return;
+ clearPickData();save();render();$('pickFile').value='';flash('PICK LIST CLEARED');
+};
+$('clearPickFresh').onclick=()=>{
+ if(!tripleConfirmFresh('You sure? Clear the active pick list?','You really sure? Rack Mode will be emptied.','You REALLY REALLY sure? Product and UPC knowledge will stay.'))return;
+ clearPickData();save();render();$('pickFile').value='';flash('PICK LIST CLEARED');alert('Active pick list cleared.');
+};
 $('clearCapacityFresh').onclick=()=>{
  if(!tripleConfirmFresh('You sure? Clear ALL recorded capacities?','You really sure? UPC Key and SKU Master will stay.','You REALLY REALLY sure? Capacities will be reset for a fresh cycle.'))return;
  clearCapacityData();save();render();flash('CAPACITIES CLEARED');alert('Capacities cleared. UPC Key and SKU Master preserved.');
@@ -482,7 +499,7 @@ $('clearPackingFresh').onclick=()=>{
 };
 $('clearBothFresh').onclick=()=>{
  if(!tripleConfirmFresh('You sure? Start a fresh capacity + packing cycle?','You really sure? Current capacities AND packing list will be cleared.','You REALLY REALLY sure? UPC Key and SKU Master stay, but this cycle data will reset.'))return;
- clearCapacityData();clearPackingData();save();render();flash('FRESH CYCLE READY');alert('Fresh cycle ready. UPC Key and SKU Master preserved.');
+ clearCapacityData();clearPackingData();clearPickData();save();render();$('pickFile').value='';flash('FRESH CYCLE READY');alert('Fresh cycle ready. UPC Key and SKU Master preserved.');
 };
 function renderUpcs(){
  let rows=[];for(const p of Object.values(S.products))if((p.upcs||[]).length)rows.push(`<div class="item"><b>${p.description}</b><div class="small">SKU ${p.sku}: ${(p.upcs||[]).join(' ↔ ')}</div></div>`);$('upcList').innerHTML=rows.slice(0,500).join('');
@@ -499,12 +516,39 @@ $('startUpdateSelected').onclick=()=>{let sku=$('updateProduct').value;if(sku)se
 function stepUpdate(dir){let a=updateRowsActive();if(!a.length)return;let i=a.findIndex(x=>x.sku===S.updateTargetSku);i=i<0?0:(i+dir+a.length)%a.length;selectUpdateSku(a[i].sku)}
 $('updatePrev').onclick=()=>stepUpdate(-1);$('updateNext').onclick=()=>stepUpdate(1);
 async function pdfText(file){let buf=await file.arrayBuffer(),pdf=await pdfjsLib.getDocument({data:buf}).promise,out='';for(let i=1;i<=pdf.numPages;i++){let pg=await pdf.getPage(i),tc=await pg.getTextContent();out+=tc.items.map(x=>x.str).join(' ')+'\n'}return out}
-function parsePickText(t){let rows=[];let re=/(\d{7})\s+(\d{8,14})?\s*([A-Z0-9&'\/\-\.\s]+?)\s+[\w\-]+\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/g,m;while((m=re.exec(t))){let sku=m[1],upc=norm(m[2]),desc=m[3].replace(/\s+/g,' ').trim(),qty=+m[5];if(desc.length<3)continue;rows.push({sku,upc,description:desc,qty,picked:0,remaining:qty});let p=S.products[sku]||(S.products[sku]={sku,description:desc,section:'unknown',upcs:[]});
-if(!p.description||p.description.startsWith('Unknown'))p.description=desc;
-p.pickListDescription=desc||p.pickListDescription||'';
-p.masterUpdatedAt=new Date().toISOString();
-p.masterSources=[...new Set([...(p.masterSources||[]),'pick-list'])];
-if(upc)addUpc(sku,upc)}return rows}
+function parsePickText(t){
+ let rows=[],src=String(t||'').replace(/\s+/g,' ').trim();
+ // Row boundaries are reliable 7-digit SKUs. Within each row the report ends in
+ // ON HAND + QTY, so QTY is always the LAST numeric token before the next SKU.
+ let starts=[...src.matchAll(/(?:^|\s)(\d{7})(?=\s)/g)];
+ for(let i=0;i<starts.length;i++){
+   let sku=starts[i][1],a=starts[i].index+(starts[i][0].length-starts[i][1].length),b=i+1<starts.length?starts[i+1].index:src.length;
+   let chunk=src.slice(a,b).trim(),body=chunk.slice(7).trim();
+   let nums=[...body.matchAll(/(?:^|\s)(-?\d+(?:\.\d+)?)(?=\s|$)/g)];
+   if(nums.length<2)continue;
+   let qty=Number(nums[nums.length-1][1]),onHand=Number(nums[nums.length-2][1]);
+   if(!Number.isFinite(qty)||qty<0||qty>999)continue;
+   // UPC, when present, is the first 8–14 digit token after SKU.
+   let um=body.match(/(?:^|\s)(\d{8,14})(?=\s)/),upc=norm(um?.[1]||'');
+   // Description is everything before the trailing vendor/on-hand/qty area.
+   // Prefer text between UPC and the last three report fields.
+   let cut=nums[Math.max(0,nums.length-2)].index;
+   let descPart=body.slice(0,cut).trim();
+   if(upc)descPart=descPart.replace(new RegExp('^'+upc+'\\s*'),'');
+   // Drop a trailing vendor-item token where possible, but never use it as quantity.
+   descPart=descPart.replace(/\s+[A-Z0-9][A-Z0-9._/-]{1,24}$/,'').trim();
+   let desc=descPart.replace(/\s+/g,' ').trim();
+   if(desc.length<2)desc=(S.products[sku]?.description||'SKU '+sku);
+   rows.push({sku,upc,description:desc,onHand,qty,picked:0,remaining:qty});
+   let p=S.products[sku]||(S.products[sku]={sku,description:desc,section:'unknown',upcs:[]});
+   if(!p.description||p.description.startsWith('Unknown'))p.description=desc;
+   p.pickListDescription=desc||p.pickListDescription||'';
+   p.masterUpdatedAt=new Date().toISOString();
+   p.masterSources=[...new Set([...(p.masterSources||[]),'pick-list'])];
+   if(upc)addUpc(sku,upc);
+ }
+ return rows
+}
 
 function validateMasterPickFormat(t){
  const u=(t||'').toUpperCase().replace(/\s+/g,' ');
@@ -569,7 +613,7 @@ function renderMapping(){
  st.innerHTML=`<div class="grid"><div class="stat"><span>SKU records</span><b>${products.length}</b></div><div class="stat"><span>SKUs with UPC</span><b>${mapped}</b></div><div class="stat"><span>UPC aliases</span><b>${Object.keys(S.aliases).length}</b></div><div class="stat"><span>Capacities</span><b>${Object.keys(S.capacities).length}</b></div></div>`;
 }
 $('pickFile').onchange=async e=>{let f=e.target.files[0];if(!f)return;let t=await pdfText(f),rows=parsePickText(t);S.pick={name:f.name,rows};save();render();alert(`Loaded ${rows.length} pick-list rows`)};
-function renderPick(){let rows=S.pick?.rows||[];$('pickItems').textContent=rows.length;$('pickRemain').textContent=rows.reduce((a,r)=>a+r.remaining,0);$('pickRows').innerHTML=rows.map(r=>{let p=S.products[r.sku]||r;return `<div class="item" onclick="openPickSku('${r.sku}')"><b>${p.description||r.description}</b><div class="small">Need ${r.qty} · Picked ${r.picked||0} · <b>${r.remaining} remaining</b></div></div>`}).join('')||'<div class="muted">No pick list loaded.</div>'}
+function renderPick(){let rows=S.pick?.rows||[];$('pickItems').textContent=rows.length;$('pickRemain').textContent=rows.reduce((a,r)=>a+rackQty(r),0);$('pickRows').innerHTML=rows.map(r=>{let p=S.products[r.sku]||r,q=rackQty(r),orig=(Number(r.qty)>=0&&Number(r.qty)<=9)?Number(r.qty):q;return `<div class="item" onclick="openPickSku('${r.sku}')"><b>${p.description||r.description}</b><div class="small">Need ${orig} · Picked ${r.picked||0} · <b>${q} remaining</b></div></div>`}).join('')||'<div class="muted">No pick list loaded.</div>'}
 window.openPickSku=sku=>{let r=S.pick?.rows.find(x=>x.sku===sku);if(r)openAmount('pick',S.products[sku]||r,r)}
 function rackGroupFor(p){
  const d=(p.description||'').toUpperCase(),sec=(p.section||'unknown').toLowerCase();
@@ -582,7 +626,17 @@ function rackGroupFor(p){
  if(sec==='bird'||/CHICK|POULTRY|LAYER|MEATBIRD|GAMEBIRD|TURKEY|DUCK/.test(d))return {order:63,label:'LIVESTOCK · CHICKEN / POULTRY',kind:'livestock'};
  return {order:90,label:'OTHER / UNMAPPED',kind:'other'}
 }
-function rackQty(r){let rem=Number(r.remaining),q=Number(r.qty);if(Number.isFinite(rem)&&rem>=0&&rem<10000)return rem;if(Number.isFinite(q)&&q>=0&&q<10000)return q;return 0}
+function rackQty(r){
+ let q=Number(r.qty),picked=Number(r.picked)||0,rem=Number(r.remaining);
+ // Pick-list QTY is the report's final field and operationally never exceeds 9 bags.
+ if(Number.isFinite(q)&&q>=0&&q<=9){
+   let expected=Math.max(0,q-picked);
+   if(Number.isFinite(rem)&&rem>=0&&rem<=9&&Math.abs(rem-expected)<0.001)return rem;
+   return expected;
+ }
+ // Never display SKU/vendor-sized numbers as a pick quantity.
+ return 0;
+}
 function rackBrandKey(p){return brandOf(p?.description||'')||'UNKNOWN'}
 function rackWeight(p){return weightOf(p?.description||'')}
 function rackAnimalKey(p){
