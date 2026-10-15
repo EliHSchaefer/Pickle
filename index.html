@@ -71,7 +71,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   </div>
 </div>
 <div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v64</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
+<header><div class="brand"><b>🥒 Pickle v65</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
 <nav id="tabs">
 <button class="tab active" data-v="capacity">Capacity Walk</button>
 <button class="tab" data-v="capacityPick">Capacity Pick</button>
@@ -172,6 +172,11 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 <section class="view" id="rack">
  <div class="card">
   <h2>Rack Mode</h2>
+  <div class="card" style="margin:8px 0 14px">
+   <b>LOAD TODAY'S PICK LIST</b>
+   <input id="rackPickFile" type="file" accept=".pdf" style="width:100%;margin-top:8px">
+   <div class="small muted" style="margin-top:6px">Loads the TSC Pick List Report and goes straight into Rack Mode.</div>
+  </div>
   <div class="muted">Upload a pick list, filter however you want, then either TAP a bag or SCAN it with the Bluetooth scanner. Scanning works even when that bag is hidden by the current filters.</div>
  </div>
  <div class="card">
@@ -538,39 +543,50 @@ window.selectUpdateSku=sku=>{let x=(S.updateList||[]).find(r=>r.sku===sku);if(!x
 $('startUpdateSelected').onclick=()=>{let sku=$('updateProduct').value;if(sku)selectUpdateSku(sku)};
 function stepUpdate(dir){let a=updateRowsActive();if(!a.length)return;let i=a.findIndex(x=>x.sku===S.updateTargetSku);i=i<0?0:(i+dir+a.length)%a.length;selectUpdateSku(a[i].sku)}
 $('updatePrev').onclick=()=>stepUpdate(-1);$('updateNext').onclick=()=>stepUpdate(1);
-async function pdfText(file){let buf=await file.arrayBuffer(),pdf=await pdfjsLib.getDocument({data:buf}).promise,out='';for(let i=1;i<=pdf.numPages;i++){let pg=await pdf.getPage(i),tc=await pg.getTextContent();out+=tc.items.map(x=>x.str).join(' ')+'\n'}return out}
+async function pdfText(file){
+ let buf=await file.arrayBuffer(),pdf=await pdfjsLib.getDocument({data:buf}).promise,pages=[];
+ for(let i=1;i<=pdf.numPages;i++){
+   let pg=await pdf.getPage(i),tc=await pg.getTextContent(),items=tc.items
+     .filter(x=>String(x.str||'').trim())
+     .map(x=>({text:String(x.str).trim(),x:+x.transform[4],y:+x.transform[5]}));
+   // PDF.js normally gives each table cell separately. Rebuild rows by Y coordinate,
+   // then sort left-to-right so SKU UPC DESCRIPTION VENDOR ON-HAND QTY stay together.
+   let lines=[];
+   for(const it of items){
+     let line=lines.find(l=>Math.abs(l.y-it.y)<=2.2);
+     if(!line){line={y:it.y,items:[]};lines.push(line)}
+     line.items.push(it);
+   }
+   lines.sort((a,b)=>b.y-a.y);
+   pages.push(lines.map(l=>l.items.sort((a,b)=>a.x-b.x).map(z=>z.text).join('\t')).join('\n'));
+ }
+ return pages.join('\n');
+}
 function parsePickText(t){
- let rows=[],src=String(t||'').replace(/\s+/g,' ').trim();
- // Row boundaries are reliable 7-digit SKUs. Within each row the report ends in
- // ON HAND + QTY, so QTY is always the LAST numeric token before the next SKU.
- let starts=[...src.matchAll(/(?:^|\s)(\d{7})(?=\s)/g)];
- for(let i=0;i<starts.length;i++){
-   let sku=starts[i][1],a=starts[i].index+(starts[i][0].length-starts[i][1].length),b=i+1<starts.length?starts[i+1].index:src.length;
-   let chunk=src.slice(a,b).trim(),body=chunk.slice(7).trim();
-   let nums=[...body.matchAll(/(?:^|\s)(-?\d+(?:\.\d+)?)(?=\s|$)/g)];
-   if(nums.length<2)continue;
-   let qty=Number(nums[nums.length-1][1]),onHand=Number(nums[nums.length-2][1]);
-   if(!Number.isFinite(qty)||qty<0||qty>999)continue;
-   // UPC, when present, is the first 8–14 digit token after SKU.
-   let um=body.match(/(?:^|\s)(\d{8,14})(?=\s)/),upc=norm(um?.[1]||'');
-   // Description is everything before the trailing vendor/on-hand/qty area.
-   // Prefer text between UPC and the last three report fields.
-   let cut=nums[Math.max(0,nums.length-2)].index;
-   let descPart=body.slice(0,cut).trim();
-   if(upc)descPart=descPart.replace(new RegExp('^'+upc+'\\s*'),'');
-   // Drop a trailing vendor-item token where possible, but never use it as quantity.
-   descPart=descPart.replace(/\s+[A-Z0-9][A-Z0-9._/-]{1,24}$/,'').trim();
-   let desc=descPart.replace(/\s+/g,' ').trim();
-   if(desc.length<2)desc=(S.products[sku]?.description||'SKU '+sku);
-   rows.push({sku,upc,description:desc,onHand,qty,picked:0,remaining:qty});
+ let rows=[];
+ for(const raw of String(t||'').split(/\n+/)){
+   let line=raw.trim();
+   // Exact TSC report shape:
+   // SKU | UPC | DESCRIPTION | VENDOR ITEM # | ON HAND | QTY
+   // The final two decimal values anchor the row from the right, so a numeric
+   // vendor item can NEVER be mistaken for SKU or quantity.
+   let m=line.match(/^(\d{7})\s+(\d{8,14})\s+(.+?)\s+(\S+)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/);
+   if(!m)continue;
+   let sku=m[1],upc=norm(m[2]),desc=m[3].replace(/\s+/g,' ').trim();
+   let vendor=m[4],onHand=Number(m[5]),qty=Number(m[6]);
+   if(!desc||!Number.isFinite(qty)||qty<0||qty>99)continue;
+   rows.push({sku,upc,description:desc,vendorItem:vendor,onHand,qty,picked:0,remaining:qty});
    let p=S.products[sku]||(S.products[sku]={sku,description:desc,section:'unknown',upcs:[]});
-   if(!p.description||p.description.startsWith('Unknown'))p.description=desc;
-   p.pickListDescription=desc||p.pickListDescription||'';
+   // The current pick-list description is the best Rack label. Do not let old
+   // vendor-code corruption overwrite what is visibly printed on this report.
+   p.description=desc;
+   p.pickListDescription=desc;
+   p.vendorItem=vendor;
    p.masterUpdatedAt=new Date().toISOString();
    p.masterSources=[...new Set([...(p.masterSources||[]),'pick-list'])];
    if(upc)addUpc(sku,upc);
  }
- return rows
+ return rows;
 }
 
 function validateMasterPickFormat(t){
@@ -635,7 +651,7 @@ function renderMapping(){
  let products=Object.values(S.products),mapped=products.filter(p=>(p.upcs||[]).length).length;
  st.innerHTML=`<div class="grid"><div class="stat"><span>SKU records</span><b>${products.length}</b></div><div class="stat"><span>SKUs with UPC</span><b>${mapped}</b></div><div class="stat"><span>UPC aliases</span><b>${Object.keys(S.aliases).length}</b></div><div class="stat"><span>Capacities</span><b>${Object.keys(S.capacities).length}</b></div></div>`;
 }
-$('pickFile').onchange=async e=>{let f=e.target.files[0];if(!f)return;let t=await pdfText(f),rows=parsePickText(t);S.pick={name:f.name,rows};save();render();alert(`Loaded ${rows.length} pick-list rows`)};
+$('pickFile').onchange=async e=>{let f=e.target.files[0];if(!f)return;let t=await pdfText(f),rows=parsePickText(t);S.pick={name:f.name,rows};save();render();showView('rack');flash((S.pick?.rows?.length||0)+' PICK ITEMS LOADED');alert(`Loaded ${rows.length} pick-list rows`)};
 function renderPick(){let rows=S.pick?.rows||[];$('pickItems').textContent=rows.length;$('pickRemain').textContent=rows.reduce((a,r)=>a+rackQty(r),0);$('pickRows').innerHTML=rows.map(r=>{let p=S.products[r.sku]||r,q=rackQty(r),orig=(Number(r.qty)>=0&&Number(r.qty)<=9)?Number(r.qty):q;return `<div class="item" onclick="openPickSku('${r.sku}')"><b>${p.description||r.description}</b><div class="small">Need ${orig} · Picked ${r.picked||0} · <b>${q} remaining</b></div></div>`}).join('')||'<div class="muted">No pick list loaded.</div>'}
 window.openPickSku=sku=>{let r=S.pick?.rows.find(x=>x.sku===sku);if(r)openAmount('pick',S.products[sku]||r,r)}
 function rackGroupFor(p){
@@ -675,7 +691,7 @@ function rackAnimalKey(p){
 function rackFilterRows(){
  let rows=(S.pick?.rows||[]).filter(r=>rackQty(r)>0),f=S.rackFilter||{animal:'ALL',brand:'ALL',min:0,max:60};
  return rows.filter(r=>{
-   let p=S.products[r.sku]||r,a=rackAnimalKey(p),b=rackBrandKey(p),w=rackWeight(p);
+   let p={...(S.products[r.sku]||{}),...r,description:r.description||(S.products[r.sku]?.description||'')},a=rackAnimalKey(p),b=rackBrandKey(p),w=rackWeight(p);
    if(f.animal!=='ALL'&&a!==f.animal)return false;
    if(f.brand!=='ALL'&&b!==f.brand)return false;
    if(w==null)return +f.min===0&&+f.max===60;
@@ -692,7 +708,7 @@ function syncRackControls(){
 
  const all=(S.pick?.rows||[]).filter(r=>rackQty(r)>0);
  const animalOrder=['DOG','CAT','LIVESTOCK','BIRD','OTHER'];
- const presentAnimals=animalOrder.filter(a=>all.some(r=>rackAnimalKey(S.products[r.sku]||r)===a));
+ const presentAnimals=animalOrder.filter(a=>all.some(r=>rackAnimalKey({...S.products[r.sku],...r,description:r.description||S.products[r.sku]?.description})===a));
  let asel=$('rackAnimal');
  if(asel){
    const labels={DOG:'DOG',CAT:'CAT',LIVESTOCK:'LIVESTOCK',BIRD:'WILD BIRD',OTHER:'OTHER / UNMAPPED'};
@@ -703,10 +719,10 @@ function syncRackControls(){
 
  // Brand choices are contextual: once DOG is chosen, only brands actually
  // represented by dog rows on the active pick list are offered.
- const animalRows=all.filter(r=>f0.animal==='ALL'||rackAnimalKey(S.products[r.sku]||r)===f0.animal);
- const brands=[...new Set(animalRows.map(r=>rackBrandKey(S.products[r.sku]||r)).filter(b=>b&&b!=='UNKNOWN'))]
+ const animalRows=all.filter(r=>f0.animal==='ALL'||rackAnimalKey({...S.products[r.sku],...r,description:r.description||S.products[r.sku]?.description})===f0.animal);
+ const brands=[...new Set(animalRows.map(r=>rackBrandKey({...S.products[r.sku],...r,description:r.description||S.products[r.sku]?.description})).filter(b=>b&&b!=='UNKNOWN'))]
    .sort((a,b)=>(BOOT.brandNames[a]||a).localeCompare(BOOT.brandNames[b]||b));
- const hasUnknown=animalRows.some(r=>rackBrandKey(S.products[r.sku]||r)==='UNKNOWN');
+ const hasUnknown=animalRows.some(r=>rackBrandKey({...S.products[r.sku],...r,description:r.description||S.products[r.sku]?.description})==='UNKNOWN');
  let sel=$('rackBrand'),f=S.rackFilter;
  if(sel){
    sel.innerHTML='<option value="ALL">ALL BRANDS</option>'+brands.map(b=>`<option value="${b}">${BOOT.brandNames[b]||b}</option>`).join('')+(hasUnknown?'<option value="UNKNOWN">OTHER / UNMAPPED</option>':'');
@@ -721,12 +737,23 @@ function syncRackControls(){
 function renderRack(){
  syncRackControls();
  let rows=rackFilterRows(),groups={};
- for(const r of rows){let p=S.products[r.sku]||r,g=rackGroupFor(p),k=`${g.order}|${g.label}`;(groups[k]??={...g,rows:[]}).rows.push(r)}
+ for(const r of rows){let p={...(S.products[r.sku]||{}),...r,description:r.description||(S.products[r.sku]?.description||'')},g=rackGroupFor(p),k=`${g.order}|${g.label}`;(groups[k]??={...g,rows:[]}).rows.push(r)}
  let ordered=Object.values(groups).sort((a,b)=>a.order-b.order||a.label.localeCompare(b.label));
  let totalBags=rows.reduce((a,r)=>a+rackQty(r),0);
  if($('rackFilterCount'))$('rackFilterCount').textContent=`${rows.length} ITEMS · ${totalBags} BAGS`;
- $('rackList').innerHTML=ordered.map(g=>`<div class="card rackGroup ${g.kind}"><div class="row"><h3 class="grow">${g.label}</h3><span class="pill">${g.rows.reduce((a,r)=>a+rackQty(r),0)} BAGS</span></div>${g.rows.sort((a,b)=>rackQty(b)-rackQty(a)).map(r=>{let p=S.products[r.sku]||r,w=rackWeight(p);return `<button class="rackItem" onclick="openPickSku('${r.sku}')"><span class="rackDesc">${p.description||r.description}${w!=null?` · ${w} LB`:''}</span><span class="rackSku">SKU ${r.sku} · ${rackBrandKey(p)==='UNKNOWN'?'OTHER / UNMAPPED':(BOOT.brandNames[rackBrandKey(p)]||rackBrandKey(p))}</span><span class="rackQty">${rackQty(r)}</span></button>`}).join('')}</div>`).join('')||(S.pick?.rows?.length?'<div class="card muted">Nothing on the active pick list matches this brand/weight filter.</div>':'<div class="card muted">Upload a pick list first.</div>');
+ $('rackList').innerHTML=ordered.map(g=>`<div class="card rackGroup ${g.kind}"><div class="row"><h3 class="grow">${g.label}</h3><span class="pill">${g.rows.reduce((a,r)=>a+rackQty(r),0)} BAGS</span></div>${g.rows.sort((a,b)=>rackQty(b)-rackQty(a)).map(r=>{let p={...(S.products[r.sku]||{}),...r,description:r.description||(S.products[r.sku]?.description||'')},w=rackWeight(p);return `<button class="rackItem" onclick="openPickSku('${r.sku}')"><span class="rackDesc">${p.description||r.description}${w!=null?` · ${w} LB`:''}</span><span class="rackSku">SKU ${r.sku} · ${rackBrandKey(p)==='UNKNOWN'?'OTHER / UNMAPPED':(BOOT.brandNames[rackBrandKey(p)]||rackBrandKey(p))}</span><span class="rackQty">${rackQty(r)}</span></button>`}).join('')}</div>`).join('')||(S.pick?.rows?.length?'<div class="card muted">Nothing on the active pick list matches this brand/weight filter.</div>':'<div class="card muted">Upload a pick list first.</div>');
 }
+$('rackPickFile').onchange=async e=>{
+ const f=e.target.files?.[0];if(!f)return;
+ try{
+   flash('READING PICK LIST…');
+   let t=await pdfText(f),v=validateMasterPickFormat(t),rows=parsePickText(t);
+   if(!v.ok||!rows.length){alert('I could not read valid TSC pick-list rows from this PDF.');return}
+   S.pick={name:f.name,rows,loadedAt:new Date().toISOString()};
+   S.rackFilter={animal:'ALL',brand:'ALL',min:0,max:60};
+   save();render();showView('rack');flash(rows.length+' PICK ITEMS LOADED');
+ }catch(err){console.error(err);alert('Pick-list load failed: '+err.message)}
+};
 $('rackAnimal').onchange=e=>{S.rackFilter.animal=e.target.value;S.rackFilter.brand='ALL';save();renderRack()};
 $('rackBrand').onchange=e=>{S.rackFilter.brand=e.target.value;save();renderRack()};
 $('rackMinWeight').oninput=e=>{let v=+e.target.value,max=+S.rackFilter.max;if(v>max){S.rackFilter.max=v;$('rackMaxWeight').value=v}S.rackFilter.min=v;save();renderRack()};
