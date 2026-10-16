@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Pickle v38 · Planogram SKU Map</title>
+<title>Pickle v69</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{--bg:#0b0d10;--card:#15191f;--line:#2b313a;--amber:#ffad22;--text:#f5f7fa;--muted:#9ba5b1;--green:#35d07f;--red:#ff6262}
@@ -71,10 +71,11 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   </div>
 </div>
 <div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v66</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
+<header><div class="brand"><b>🥒 Pickle v69</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
 <nav id="tabs">
 <button class="tab active" data-v="rack">Rack Mode</button>
-<button class="tab" data-v="capacityPick">Capacity Pick</button>
+<button class="tab" data-v="pickUpload">Pick List Upload</button>
+<button class="tab" data-v="capacityPick">Capacity Walk</button>
 <button class="tab" data-v="packing">Packing Breakdown</button>
 </nav></header><main>
 <section class="view" id="mapping">
@@ -91,9 +92,10 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
  <div class="card"><h3>Capacity List</h3><input id="capSearch" placeholder="Search SKU, UPC, product or brand"><div id="capList" class="scroll"></div></div>
 </section>
 <section class="view" id="capacityPick">
- <div class="card"><h2>Capacity Pick</h2><div class="muted">This mode never changes shelf capacity. Scan a bag → Pickle looks up the capacity recorded during Capacity Walk → choose how many bags you are stocking. If the UPC is unknown, Pickle tells you it was not recognized and lets you match it to the correct product.</div></div>
- <div class="card"><div class="grid"><div class="stat"><span>Walked SKUs</span><b id="pickWalkCount">0</b></div><div class="stat"><span>Still need bags</span><b id="pickNeedCount">0</b></div><div class="stat"><span>Unmatched UPCs</span><b id="pickUnknownCount">0</b></div></div></div>
- <div class="card"><h3>Capacity Pick List</h3><input id="capPickSearch" placeholder="Search product, SKU or UPC"><div id="capPickList" class="scroll"></div></div>
+<h2>Capacity Walk</h2>
+<div class="card"><b>SCAN → TAP CAPACITY → NEXT BAG</b><div class="muted small" style="margin-top:8px">This is just a physical capacity recorder. Scan a bag and tap 0–12. Scanning it again lets you overwrite the saved capacity.</div></div>
+<div class="card"><div class="stat"><span>Known capacities</span><b id="capPickCount">0</b></div><div class="small muted" style="margin-top:8px">No pick-list quantity, on-hand, or remaining calculation.</div></div>
+<div id="capPickRows"></div>
 </section>
 <section class="view" id="packing">
  <div class="card"><h2>Inbound → Shelf Capacity</h2><div class="muted">Upload the shipped SKU list. Pickle cross-references the SKU master + planogram section map + capacities.</div><input id="packingFile" type="file" accept=".pdf"><div class="small muted" style="margin-top:7px">No pallet conversion. Breakdown splits the packing list by brand and approximate operational section/category, with shipped bag count and known weight.</div></div>
@@ -160,15 +162,25 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
  <div class="card"><h2>Product Data · Import / Export</h2><div class="muted">Product Data = SKU Master + UPC Key + learned bag/shelf relationships. Export it as one portable JSON file and append/update it later without losing existing products.</div></div>
  <div class="card grid"><button id="exportProductData" class="primary">EXPORT PRODUCT DATA JSON</button><label class="btn">IMPORT PRODUCT DATA JSON<input id="importProductData" type="file" accept=".json" style="display:none"></label><button id="exportJson">EXPORT ALL JSON</button><button id="exportUpcCsv">EXPORT UPC KEY CSV</button><button id="exportCapCsv">EXPORT CAPACITY CSV</button><label class="btn">IMPORT JSON<input id="importJson" type="file" accept=".json" style="display:none"></label><label class="btn">IMPORT UPC CSV<input id="importUpc" type="file" accept=".csv,text/csv" style="display:none"></label></div>
 </section>
+<section class="view" id="pickUpload">
+ <h2>Pick List Upload</h2>
+ <div class="card">
+  <h3>Load / Layer Pick Lists</h3>
+  <input id="rackPickFile" type="file" accept=".pdf" multiple style="width:100%;margin-top:8px">
+  <div class="muted small" style="margin-top:8px">New pick lists append to the current Rack list. Duplicate SKUs combine their needed quantity.</div>
+  <div id="rackPickLayers" class="small" style="margin-top:12px"></div>
+ </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+ <button id="rackClearPick" class="danger" type="button" style="width:100%;padding:14px;font-weight:900">CLEAR PICK LIST</button>
+ <div class="small muted" style="margin-top:7px">Clears all layered pick lists. Saved product/UPC/capacity knowledge stays.</div>
+</div>
+</section>
 <section class="view active" id="rack">
  <div class="card">
   <h2>Rack Mode</h2>
-  <div class="card" style="margin:8px 0 14px">
-   <b>LOAD / LAYER PICK LISTS</b>
-   <input id="rackPickFile" type="file" accept=".pdf" multiple style="width:100%;margin-top:8px">
-   <div class="small muted" style="margin-top:6px">Choose one or several TSC Pick List Reports. Every new file APPENDS to the current Rack list; duplicate SKUs combine their needed quantity.</div>
    <div id="rackPickLayers" class="small" style="margin-top:10px"></div>
-   <button id="rackClearPick" class="danger" type="button" style="width:100%;margin-top:10px;padding:12px;font-weight:900">CLEAR ALL RACK PICK LISTS</button>
   </div>
   <div class="muted">Upload a pick list, filter however you want, then either TAP a bag or SCAN it with the Bluetooth scanner. Scanning works even when that bag is hidden by the current filters.</div>
  </div>
@@ -192,6 +204,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   <div class="small muted" style="margin-top:8px">2 lb steps. Products without a readable weight stay visible only when the full weight range is selected.</div>
  </div>
  <div id="rackList"></div>
+</div>
 </section>
 <section class="view" id="pick">
  <div class="card"><h2>Pick List Upload</h2><input id="pickFile" type="file" accept=".pdf"><div class="muted small" style="margin-top:7px">Upload is optional. Capacity and packing modes work without it.</div><button id="clearPickList" class="danger" type="button" style="width:100%;margin-top:12px;padding:13px;font-weight:900">CLEAR ACTIVE PICK LIST</button></div>
@@ -441,14 +454,14 @@ function itemHtml(p,extra=''){return `<div class="item section-${p.section||'unk
 function renderCaps(){let q=($('capSearch')?.value||'').toUpperCase();let arr=Object.entries(S.capacities).map(([sku,cap])=>[S.products[sku]||{sku,description:sku},cap]).filter(([p])=>(p.description+p.sku+(p.upcs||[]).join()).toUpperCase().includes(q));$('capList').innerHTML=arr.length?arr.map(([p,c])=>itemHtml(p,`· REMAINING <b>${c}</b>${S.capacityOriginal[p.sku]!=null?` · ORIGINAL ${S.capacityOriginal[p.sku]} · PICKED ${S.capacityPicked[p.sku]||0}`:''}`)).join(''):'<div class="item muted">No capacities recorded yet. Scan a bag.</div>'}
 $('capSearch').oninput=renderCaps;
 function renderCapacityPick(){
- const el=$('capPickList');if(!el)return;
- const q=($('capPickSearch')?.value||'').toUpperCase();
- const rows=Object.keys(S.capacityOriginal||{}).map(sku=>{const p=S.products[sku]||{sku,description:sku,upcs:[]};return [p,+S.capacities[sku]||0,S.capacityOriginal[sku],+S.capacityPicked[sku]||0]}).filter(([p])=>(p.description+p.sku+(p.upcs||[]).join()).toUpperCase().includes(q)).sort((a,b)=>b[1]-a[1]);
- if($('pickWalkCount'))$('pickWalkCount').textContent=rows.length;if($('pickNeedCount'))$('pickNeedCount').textContent=rows.filter(x=>x[1]>0).length;if($('pickUnknownCount'))$('pickUnknownCount').textContent=Object.keys(S.products||{}).filter(x=>x.startsWith('UPC:')).length;
- el.innerHTML=rows.length?rows.map(([p,r,o,pk])=>`<div class="item" onclick="window.openCapacityPickSku('${p.sku}')"><b>${p.description||p.sku}</b><div class="small muted">SKU ${p.sku} · WALK ${o} · PICKED ${pk} · <b>REMAINING ${r}</b></div></div>`).join(''):'<div class="item muted">No Capacity Walk data yet.</div>';
+ const entries=Object.entries(S.cap||{}).filter(([k,v])=>v!==null&&v!==undefined);
+ if($('capPickCount'))$('capPickCount').textContent=entries.length;
+ if(!$('capPickRows'))return;
+ $('capPickRows').innerHTML=entries.map(([upc,cap])=>{
+   let p=resolve(upc),name=p?.description||('UPC '+upc);
+   return `<div class="item" onclick="openAmount('capacity',resolve('${upc}'))"><b>${name}</b><div class="small">Capacity <b>${cap}</b> · tap to override</div></div>`;
+ }).join('')||'<div class="card muted">No capacities recorded yet. Scan your first bag.</div>';
 }
-window.openCapacityPickSku=sku=>{const p=S.products[sku];if(p)openAmount('capacityPick',p)};
-$('capPickSearch').oninput=renderCapacityPick;
 function renderMaster(){let q=($('masterSearch')?.value||'').toUpperCase();let a=Object.values(S.products).filter(p=>(p.sku+p.description+(p.upcs||[]).join()).toUpperCase().includes(q)).slice(0,400);$('masterList').innerHTML=a.map(p=>itemHtml(p)).join('')}
 $('masterSearch').oninput=renderMaster;
 
@@ -676,11 +689,12 @@ function rackWeight(p){return weightOf(p?.description||'')}
 function rackAnimalKey(p){
  const raw=String(animalTypeOf(p)||'').toUpperCase();
  const d=String(p?.description||'').toUpperCase();
- if(raw.includes('DOG')||/\b(DOG|PUPPY)\b/.test(d))return 'DOG';
- if(raw.includes('CAT')||/\b(CAT|KITTEN|FELINE)\b/.test(d))return 'CAT';
- if(raw.includes('CHICK')||raw.includes('POULTRY')||/\b(CHICK|CHICKEN|POULTRY|LAYER|FLOCK)\b/.test(d))return 'LIVESTOCK';
- if(raw.includes('EQUINE')||raw.includes('CATTLE')||raw.includes('LIVESTOCK')||raw.includes('HORSE')||/\b(HORSE|EQUINE|CATTLE|CALF|GOAT|SHEEP|SWINE|PIG|RABBIT)\b/.test(d))return 'LIVESTOCK';
- if(raw.includes('BIRD')||/\b(WILD BIRD|BIRD SEED|SONGBIRD)\b/.test(d))return 'BIRD';
+ // Cat/cat litter is explicitly separate from cattle/livestock.
+ if(raw.includes('CAT')||/\b(CAT|KITTEN|FELINE|LITTER|TIDY CATS|CAT CHOW)\b/.test(d))return 'CAT';
+ if(raw.includes('DOG')||/\b(DOG|PUPPY|CANINE)\b/.test(d))return 'DOG';
+ if(raw.includes('CHICK')||raw.includes('POULTRY')||raw.includes('EQUINE')||raw.includes('CATTLE')||raw.includes('LIVESTOCK')||raw.includes('HORSE')||
+    /\b(CATTLE|CALF|COW|BOVINE|HORSE|EQUINE|GOAT|SHEEP|SWINE|PIG|HOG|RABBIT|CHICK|CHICKEN|POULTRY|LAYER|FLOCK|DUCK|TURKEY)\b/.test(d))return 'LIVESTOCK';
+ if(raw.includes('BIRD')||/\b(WILD BIRD|BIRD SEED|SONGBIRD|SUNFLOWER SEED|CARDINAL)\b/.test(d))return 'BIRD';
  return 'OTHER';
 }
 function rackFilterRows(){
@@ -707,7 +721,7 @@ function syncRackControls(){
  const presentAnimals=animalOrder.filter(a=>all.some(r=>rackAnimalKey({...S.products[r.sku],...r,description:r.description||S.products[r.sku]?.description})===a));
  let asel=$('rackAnimal');
  if(asel){
-   const labels={DOG:'DOG',CAT:'CAT',LIVESTOCK:'LIVESTOCK',BIRD:'WILD BIRD',OTHER:'OTHER / UNMAPPED'};
+   const labels={DOG:'DOG',CAT:'CAT / CAT LITTER',LIVESTOCK:'CATTLE / LIVESTOCK',BIRD:'WILD BIRD',OTHER:'OTHER / UNMAPPED'};
    asel.innerHTML='<option value="ALL">ALL ANIMALS / TYPES</option>'+presentAnimals.map(a=>`<option value="${a}">${labels[a]}</option>`).join('');
    if(f0.animal!=='ALL'&&!presentAnimals.includes(f0.animal))f0.animal='ALL';
    asel.value=f0.animal;
