@@ -94,6 +94,53 @@ header{position:static!important;top:auto!important}
 #amountModal .close{font-size:16px!important;padding:11px 13px!important;border-radius:10px!important}
 </style>
 
+
+<style>
+/* v69 native-zoom Rack picker.
+   No inverse scaling: the picker grows naturally with Safari pinch zoom.
+   Rack rows are ~7px high; quantity buttons are exactly 14px high (2× row height). */
+#amountModal{
+ position:absolute!important;
+ inset:auto!important;
+ left:0!important;
+ right:auto!important;
+ width:148px!important;
+ min-height:0!important;
+ height:auto!important;
+ padding:4px!important;
+ overflow:visible!important;
+ transform:none!important;
+ font-size:5px!important;
+ line-height:6px!important;
+}
+#amountModal h1{font-size:8px!important;line-height:9px!important;margin:2px 0!important}
+#amountModal .sub,#amountModal .stageTitle,#amountModal .pickedNote{font-size:5px!important;line-height:6px!important;margin:2px 0!important}
+#amountModal .big,#amountModal .remainingHero{font-size:9px!important;line-height:10px!important;margin:2px 0!important}
+#amountModal .numbers{
+ display:grid!important;
+ grid-template-columns:repeat(4,32px)!important;
+ gap:2px!important;
+ margin:3px 0!important;
+ width:max-content!important;
+}
+#amountModal .num{
+ width:32px!important;
+ height:14px!important;
+ min-height:14px!important;
+ padding:0!important;
+ margin:0!important;
+ border-radius:2px!important;
+ font-size:7px!important;
+ line-height:14px!important;
+}
+#amountModal .close{
+ font-size:5px!important;
+ line-height:7px!important;
+ padding:1px 3px!important;
+ border-radius:2px!important;
+}
+</style>
+
 </head>
 <body>
 <div id="bagMatchBar">
@@ -151,16 +198,23 @@ header{position:static!important;top:auto!important}
 <div id="capPickRows"></div>
 </section>
 <section class="view" id="packing">
- <div class="card"><h2>Inbound → Shelf Capacity</h2><div class="muted">Upload the shipped SKU list. Pickle cross-references the SKU master + planogram section map + capacities.</div><input id="packingFile" type="file" accept=".pdf"><div class="small muted" style="margin-top:7px">No pallet conversion. Breakdown splits the packing list by brand and approximate operational section/category, with shipped bag count and known weight.</div></div>
+ <div class="card">
+  <h2>Feed Bag Breakdown</h2>
+  <div class="muted">Upload the shipped packing list. Only feed-bag SKUs are included.</div>
+  <input id="packingFile" type="file" accept=".pdf">
+  <div class="filterMode" id="packingBreakMode">
+   <button type="button" class="active" data-mode="category">CATEGORY</button>
+   <button type="button" data-mode="aisle">AISLE / PLANOGRAM</button>
+  </div>
+  <div class="small muted">Category = animal/feed type. Aisle = imported planogram filename. Unmapped SKUs stay UNMAPPED.</div>
+ </div>
  <div id="packingSummary"></div>
-<div class="card"><h3>What can actually go to the floor?</h3>
-<div class="muted small">For each incoming SKU: FLOOR = min(shipped bags, recorded empty shelf capacity). OVERSTOCK = shipped − FLOOR. Unknown capacity is kept separate and never guessed.</div>
-<div id="shelfFit"></div></div>
-<div class="card"><h3>Whole-truck distribution by planogram filename</h3>
-<div class="muted small">Uses uploaded planogram PDF filenames as categories. Percentages are based on inbound quantity from the packing list; unmapped SKUs stay visible instead of being guessed.</div>
-<div id="wholeTruckBreakdown"></div></div>
-<div class="card"><h3>Planogram / aisle distribution</h3><div class="muted small">Based on SKU→planogram mapping. Pounds use encoded bag weights; unknown weights are never guessed.</div><div id="aisleBreakdown"></div></div><div class="card"><h3>Brand distribution by aisle</h3><div id="brandBreakdown"></div></div>
- <div class="card"><h3>Shipment detail</h3><div id="packingRows" class="scroll"></div></div>
+ <div class="card"><div id="packingBreakdown"></div></div>
+ <div class="card"><h3>Feed bag detail</h3><div id="packingRows" class="scroll"></div></div>
+ <div id="shelfFit" style="display:none"></div>
+ <div id="wholeTruckBreakdown" style="display:none"></div>
+ <div id="aisleBreakdown" style="display:none"></div>
+ <div id="brandBreakdown" style="display:none"></div>
 </section>
 
 
@@ -488,6 +542,8 @@ function openAmount(mode,p,row=null){
  }else{
    $('modalMode').textContent='CAPACITY WALK';showCapacityStage();
  }
+ $('amountModal').style.left='0px';
+ $('amountModal').style.top=(window.scrollY||document.documentElement.scrollTop||0)+'px';
  $('amountModal').classList.add('show');
 }
 function showCapacityPickStage(){
@@ -1002,38 +1058,56 @@ function zoneOf(p){
 }
 function packCalc(r){let p=S.products[r.sku]||{sku:r.sku,description:r.description,section:'freight'},w=weightOf(p.description||r.description),sec=p.section||'freight',planogram=S.planogramSkuMap?.[r.sku]||p.planogram||null,cap=S.capacities[r.sku],floor=cap==null?null:Math.min(r.shipped,cap),over=floor==null?null:Math.max(0,r.shipped-floor);return {...r,p,w,sec,planogram,zone:zoneOf(p),cap,floor,over,pounds:w!=null?r.shipped*w:null,floorPounds:(w!=null&&floor!=null)?floor*w:null,overPounds:(w!=null&&over!=null)?over*w:null,brand:brandOf(p.description||r.description)}}
 function aisleLabel(sec){return ({dog:'Dog Food',cat:'Cat Food',bird:'Chicken / Poultry',livestock:'Cattle & Livestock',equine:'Equine',freight:'Other / Unmapped',unknown:'Unknown'})[sec]||sec}
-function renderPacking(){let rows=(S.packing?.rows||[]).map(packCalc);if(!rows.length){$('packingSummary').innerHTML='<div class="card muted">No packing list loaded.</div>';$('shelfFit').innerHTML='';$('aisleBreakdown').innerHTML='';$('brandBreakdown').innerHTML='';$('packingRows').innerHTML='';if($('wholeTruckBreakdown'))$('wholeTruckBreakdown').innerHTML='';return}let truckGroups={};
- for(const x of rows){let k=x.planogram||'UNMAPPED';let g=truckGroups[k]??={units:0,skus:0};g.units+=x.shipped;g.skus++}
- let truckUnits=rows.reduce((a,x)=>a+x.shipped,0);
- if($('wholeTruckBreakdown')){
-   $('wholeTruckBreakdown').innerHTML=`<table><tr><th>Planogram / category</th><th>Inbound qty</th><th>% of truck</th><th>SKUs</th></tr>${
-     Object.entries(truckGroups).sort((a,b)=>b[1].units-a[1].units).map(([name,g])=>`<tr><td><b>${name}</b></td><td>${g.units}</td><td>${truckUnits?(100*g.units/truckUnits).toFixed(1):'0.0'}%</td><td>${g.skus}</td></tr>`).join('')
-   }</table><div class="small muted">Truck % is quantity-based. It is not a pallet or labor estimate.</div>`;
+let packingBreakMode='category';
+function setPackingBreakMode(mode){
+ packingBreakMode=mode==='aisle'?'aisle':'category';
+ document.querySelectorAll('#packingBreakMode button').forEach(b=>b.classList.toggle('active',b.dataset.mode===packingBreakMode));
+ renderPacking();
+}
+function renderPacking(){
+ let rows=(S.packing?.rows||[]).map(packCalc);
+ let feed=rows.filter(x=>['dog','livestock','equine','cat','bird'].includes(x.sec));
+ const summary=$('packingSummary'), box=$('packingBreakdown'), detail=$('packingRows');
+ if(!feed.length){
+   if(summary)summary.innerHTML='<div class="card muted">No feed bags found in the loaded packing list.</div>';
+   if(box)box.innerHTML='';
+   if(detail)detail.innerHTML='';
+   return;
  }
- let feed=rows.filter(x=>['dog','livestock','equine','cat','bird'].includes(x.sec)),groups={};for(const x of feed){let g=groups[x.sec]??={bags:0,pounds:0,unknownBags:0,brands:{},weights:{}};g.bags+=x.shipped;if(x.w!=null){g.pounds+=x.pounds;g.weights[x.w]=(g.weights[x.w]||0)+x.shipped}else g.unknownBags+=x.shipped;let bn=BOOT.brandNames[x.brand]||x.brand,z=g.brands[bn]??={bags:0,pounds:0,unknown:0};z.bags+=x.shipped;if(x.pounds!=null)z.pounds+=x.pounds;else z.unknown+=x.shipped}let totalBags=Object.values(groups).reduce((a,g)=>a+g.bags,0),totalLb=Object.values(groups).reduce((a,g)=>a+g.pounds,0),capKnown=feed.filter(x=>x.cap!=null).length;
- let zones={};
+ let totalBags=feed.reduce((n,x)=>n+(+x.shipped||0),0);
+ let knownWeight=feed.filter(x=>x.pounds!=null).reduce((n,x)=>n+x.pounds,0);
+ let unknownWeightBags=feed.filter(x=>x.pounds==null).reduce((n,x)=>n+(+x.shipped||0),0);
+ let mappedBags=feed.filter(x=>x.planogram).reduce((n,x)=>n+(+x.shipped||0),0);
+ if(summary)summary.innerHTML=`<div class="card"><div class="grid">
+   <div class="stat"><span>FEED BAGS</span><b>${totalBags}</b></div>
+   <div class="stat"><span>KNOWN WEIGHT</span><b>${Math.round(knownWeight).toLocaleString()} lb</b></div>
+   <div class="stat"><span>PLANOGRAM MAPPED</span><b>${totalBags?Math.round(100*mappedBags/totalBags):0}%</b></div>
+   <div class="stat"><span>UNKNOWN-WT BAGS</span><b>${unknownWeightBags}</b></div>
+ </div></div>`;
+ let groups={};
  for(const x of feed){
-   let z=zones[x.zone]??={inbound:0,floor:0,over:0,unknown:0,inLb:0,floorLb:0,overLb:0,skus:0};
-   z.inbound+=x.shipped;z.skus++;
-   if(x.pounds!=null)z.inLb+=x.pounds;
-   if(x.cap==null)z.unknown+=x.shipped;
-   else {z.floor+=x.floor;z.over+=x.over;if(x.floorPounds!=null)z.floorLb+=x.floorPounds;if(x.overPounds!=null)z.overLb+=x.overPounds}
+   const key=packingBreakMode==='aisle'?(x.planogram||'UNMAPPED'):aisleLabel(x.sec);
+   const g=groups[key]||(groups[key]={bags:0,pounds:0,unknownWeightBags:0,skus:0});
+   g.bags+=+x.shipped||0; g.skus++;
+   if(x.pounds!=null)g.pounds+=x.pounds; else g.unknownWeightBags+=+x.shipped||0;
  }
- let knownInbound=Object.values(zones).reduce((a,z)=>a+z.floor+z.over,0),
-     floorTotal=Object.values(zones).reduce((a,z)=>a+z.floor,0),
-     overTotal=Object.values(zones).reduce((a,z)=>a+z.over,0),
-     unknownTotal=Object.values(zones).reduce((a,z)=>a+z.unknown,0);
-$('packingSummary').innerHTML=`<div class="card"><div class="grid"><div class="stat"><span>Mapped feed bags</span><b>${totalBags}</b></div><div class="stat"><span>Known shipped weight</span><b>${Math.round(totalLb).toLocaleString()} lb</b></div><div class="stat"><span>Planogram aisles</span><b>${Object.keys(groups).length}</b></div><div class="stat"><span>Capacity matched</span><b>${capKnown}/${feed.length} SKUs</b></div></div></div>`;$('shelfFit').innerHTML=`<div class="grid">
- <div class="stat"><span>Inbound w/ capacity</span><b>${knownInbound}</b></div>
- <div class="stat"><span>Can go to shelf</span><b>${floorTotal}</b></div>
- <div class="stat"><span>Expected overstock</span><b>${overTotal}</b></div>
- <div class="stat"><span>Capacity unknown</span><b>${unknownTotal}</b></div></div>`+
- `<table style="margin-top:12px"><tr><th>Section / run</th><th>Inbound</th><th>Floor</th><th>Overstock</th><th>Unknown cap.</th><th>Floor %*</th></tr>${
- Object.entries(zones).sort((a,b)=>b[1].inbound-a[1].inbound).map(([name,z])=>{
-   let known=z.floor+z.over,pct=known?Math.round(100*z.floor/known):null;
-   return `<tr><td><b>${name}</b></td><td>${z.inbound}</td><td>${z.floor}</td><td>${z.over}</td><td>${z.unknown}</td><td>${pct==null?'—':pct+'%'}</td></tr>`;
- }).join('')}</table><div class="small muted">*Floor % uses only incoming bags whose SKU has a recorded capacity.</div>`;
- let maxB=Math.max(1,...Object.values(groups).map(g=>g.bags));$('aisleBreakdown').innerHTML=Object.entries(groups).sort((a,b)=>b[1].bags-a[1].bags).map(([sec,g])=>{let weights=Object.entries(g.weights).sort((a,b)=>+b[0]-+a[0]).map(([w,n])=>`${w} lb × ${n}`).join(' · ');return `<div class="dist section-${sec}"><div class="row"><b class="grow">${aisleLabel(sec)}</b><b>${g.bags} bags</b></div><div class="bar"><i style="width:${100*g.bags/maxB}%"></i></div><div class="small">${Math.round(g.pounds).toLocaleString()} known lb${g.unknownBags?` · <span class="warn">${g.unknownBags} bags weight unknown</span>`:''}</div><div class="small muted">${weights||'No encoded bag weights'}</div></div>`}).join('');let br=[];for(const [sec,g] of Object.entries(groups))for(const [brand,z] of Object.entries(g.brands))br.push({sec,brand,...z});$('brandBreakdown').innerHTML=`<table><tr><th>Aisle</th><th>Brand</th><th>Bags</th><th>Known lb</th><th>Unknown wt.</th></tr>${br.sort((a,b)=>a.sec.localeCompare(b.sec)||b.bags-a.bags).map(x=>`<tr><td>${aisleLabel(x.sec)}</td><td>${x.brand}</td><td><b>${x.bags}</b></td><td>${Math.round(x.pounds).toLocaleString()}</td><td>${x.unknown||''}</td></tr>`).join('')}</table>`;$('packingRows').innerHTML=rows.map(x=>`<div class="item section-${x.sec}"><b>${x.p.description||x.description}</b><div class="small">SKU ${x.sku} · shipped <b>${x.shipped}</b> · ${aisleLabel(x.sec)} · ${x.w?x.w+' lb/bag · '+Math.round(x.pounds).toLocaleString()+' lb shipped':'weight ?'} · capacity ${x.cap??'?'}</div></div>`).join('')}
+ const entries=Object.entries(groups).sort((a,b)=>b[1].bags-a[1].bags);
+ if(box)box.innerHTML=`<table>
+   <tr><th>${packingBreakMode==='aisle'?'Aisle / planogram':'Category'}</th><th>Bags</th><th>% bags</th><th>Weight</th><th>% weight*</th></tr>
+   ${entries.map(([name,g])=>`<tr>
+     <td><b>${name}</b></td>
+     <td><b>${g.bags}</b></td>
+     <td>${totalBags?(100*g.bags/totalBags).toFixed(1):'0.0'}%</td>
+     <td>${Math.round(g.pounds).toLocaleString()} lb${g.unknownWeightBags?` <span class="warn">+ ${g.unknownWeightBags} bag${g.unknownWeightBags===1?'':'s'} ?</span>`:''}</td>
+     <td>${knownWeight?(100*g.pounds/knownWeight).toFixed(1):'—'}%</td>
+   </tr>`).join('')}
+ </table>
+ <div class="small muted" style="margin-top:8px">*Weight percentages use bags with a readable package weight only. Bag percentages use all feed bags. ${packingBreakMode==='aisle'?'Aisles come directly from the imported SKU → planogram filename map.':''}</div>`;
+ if(detail)detail.innerHTML=feed.slice().sort((a,b)=>b.shipped-a.shipped).map(x=>`<div class="item section-${x.sec}">
+   <b>${x.p.description||x.description}</b>
+   <div class="small">SKU ${x.sku} · <b>${x.shipped} bags</b> · ${aisleLabel(x.sec)} · ${x.planogram||'UNMAPPED'} · ${x.w!=null?x.w+' lb/bag':'weight ?'}</div>
+ </div>`).join('');
+}
 let allocationView='total';
 const ALLOC_SECTIONS=[
  ['total','TOTAL FEED'],['dog','DOG'],['cat','CAT'],['equine','EQUINE'],['livestock','CATTLE / LIVESTOCK'],['bird','CHICKEN / POULTRY']
@@ -1404,40 +1478,8 @@ $('freightHistoryFiles').onchange=async e=>{
  S.freightHistory=loaded;save();$('freightHistoryStatus').textContent=`${loaded.length} packing lists · ${loaded.reduce((n,x)=>n+x.rows.length,0)} SKU rows loaded`;renderFreightSort()
 };
 
-if($('rackQtyMode'))$('rackQtyMode').onclick=()=>{localStorage.setItem('pickleRackQtyMode',rackQtyMode()==='pin'?'column':'pin');applyRackQtyMode()};
 
-// Safari/iPhone pinch-zoom aware amount modal. visualViewport.scale is the actual live page zoom.
-(function(){
- const modal=$('amountModal'); if(!modal)return;
- function fit(){
-   if(!modal.classList.contains('show'))return;
-   const vv=window.visualViewport;
-   if(!vv){modal.classList.remove('zoomProofPicker');modal.removeAttribute('style');return}
-   const z=Math.max(.1,Number(vv.scale)||1);
-   // Use page coordinates because iOS Safari's fixed-position behavior changes under pinch zoom.
-   modal.classList.add('zoomProofPicker');
-   modal.style.position='absolute';
-   modal.style.inset='auto';
-   modal.style.left=(vv.pageLeft||window.scrollX||0)+'px';
-   modal.style.top=(vv.pageTop||window.scrollY||0)+'px';
-   modal.style.width=(vv.width*z)+'px';
-   modal.style.minHeight=(vv.height*z)+'px';
-   modal.style.height='auto';
-   modal.style.transformOrigin='0 0';
-   modal.style.transform='scale('+(1/z)+')';
-   modal.style.overflow='auto';
- }
- function clear(){
-   if(modal.classList.contains('show'))return;
-   ['position','inset','left','top','width','minHeight','height','transformOrigin','transform','overflow'].forEach(k=>modal.style[k]='');
-   modal.classList.remove('zoomProofPicker');
- }
- new MutationObserver(()=>{modal.classList.contains('show')?requestAnimationFrame(()=>{fit();setTimeout(fit,40)}):clear()}).observe(modal,{attributes:true,attributeFilter:['class']});
- if(window.visualViewport){visualViewport.addEventListener('resize',fit);visualViewport.addEventListener('scroll',fit)}
- window.addEventListener('orientationchange',()=>setTimeout(fit,150));
- window.fitPickModalToZoom=fit;
-})();
 
+document.querySelectorAll('#packingBreakMode button').forEach(b=>b.onclick=()=>setPackingBreakMode(b.dataset.mode));
 render();
-</script></body></html<button class="tab" data-v="mapping">UPC→SKU Map</button>
->
+</script></body></html>
