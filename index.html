@@ -1,5 +1,5 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=10,user-scalable=yes">
 <title>Pickle v69</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
@@ -95,49 +95,53 @@ header{position:static!important;top:auto!important}
 </style>
 
 
+
+
 <style>
-/* v69 native-zoom Rack picker.
-   No inverse scaling: the picker grows naturally with Safari pinch zoom.
-   Rack rows are ~7px high; quantity buttons are exactly 14px high (2× row height). */
-#amountModal{
- position:absolute!important;
- inset:auto!important;
- left:0!important;
- right:auto!important;
- width:148px!important;
- min-height:0!important;
- height:auto!important;
- padding:4px!important;
- overflow:visible!important;
- transform:none!important;
- font-size:5px!important;
- line-height:6px!important;
+/* Tap a Rack row: choices replace that row at the exact same location. */
+#rackList .rackInlinePick{
+  display:flex!important; align-items:center!important; gap:1px!important;
+  height:14px!important; min-height:14px!important; width:max-content!important;
+  padding:0!important; margin:0!important; background:#ffad22!important;
+  border:0!important; overflow:visible!important; position:relative!important; z-index:20!important;
 }
-#amountModal h1{font-size:8px!important;line-height:9px!important;margin:2px 0!important}
-#amountModal .sub,#amountModal .stageTitle,#amountModal .pickedNote{font-size:5px!important;line-height:6px!important;margin:2px 0!important}
-#amountModal .big,#amountModal .remainingHero{font-size:9px!important;line-height:10px!important;margin:2px 0!important}
-#amountModal .numbers{
- display:grid!important;
- grid-template-columns:repeat(4,32px)!important;
- gap:2px!important;
- margin:3px 0!important;
- width:max-content!important;
+#rackList .rackInlineNum{
+  width:14px!important; min-width:14px!important; height:14px!important; min-height:14px!important;
+  padding:0!important; margin:0!important; border:0!important; border-radius:1px!important;
+  background:#fff!important; color:#111!important; font-size:6px!important; line-height:14px!important;
+  font-weight:900!important; text-align:center!important;
 }
-#amountModal .num{
- width:32px!important;
- height:14px!important;
- min-height:14px!important;
- padding:0!important;
- margin:0!important;
- border-radius:2px!important;
- font-size:7px!important;
- line-height:14px!important;
+#rackList .rackInlineCancel{
+  width:14px!important; min-width:14px!important; height:14px!important; min-height:14px!important;
+  padding:0!important; margin:0!important; border:0!important; border-radius:1px!important;
+  background:#222!important; color:#fff!important; font-size:6px!important; line-height:14px!important;
 }
-#amountModal .close{
- font-size:5px!important;
- line-height:7px!important;
- padding:1px 3px!important;
- border-radius:2px!important;
+
+/* Scanner path only: after viewport is reset to 1×, restore the large full-screen picker. */
+#amountModal.scannerPick{
+  display:none; position:fixed!important; inset:0!important; left:0!important; top:0!important;
+  width:100vw!important; height:100vh!important; max-width:none!important;
+  background:#e98d09!important; color:#111!important; padding:16px!important;
+  overflow:auto!important; transform:none!important; z-index:10000!important;
+  font-size:16px!important; line-height:normal!important;
+}
+#amountModal.scannerPick.show{display:block!important}
+#amountModal.scannerPick h1{font-size:30px!important;line-height:1.15!important;margin:6px 0!important}
+#amountModal.scannerPick .sub{font-size:15px!important;line-height:normal!important}
+#amountModal.scannerPick .big,#amountModal.scannerPick .remainingHero{font-size:28px!important;line-height:normal!important}
+#amountModal.scannerPick .stageTitle{font-size:16px!important;line-height:normal!important;margin-top:16px!important}
+#amountModal.scannerPick .pickedNote{font-size:14px!important;line-height:normal!important;margin:5px 0!important}
+#amountModal.scannerPick .numbers{
+  display:grid!important; grid-template-columns:repeat(4,1fr)!important;
+  gap:9px!important; margin:18px 0!important; width:100%!important;
+}
+#amountModal.scannerPick .num{
+  width:auto!important; height:auto!important; min-height:58px!important;
+  padding:12px 5px!important; margin:0!important; border-radius:14px!important;
+  font-size:25px!important; line-height:1!important;
+}
+#amountModal.scannerPick .close{
+  font-size:16px!important; padding:11px 13px!important; border-radius:10px!important;
 }
 </style>
 
@@ -499,7 +503,7 @@ function handleScan(raw){
      let rp=S.products[row.sku]||row,need=rackQty(row);
      if(need>0){
        flash('RACK BAG FOUND · NEED '+need);
-       return openAmount('pick',rp,row);
+       return openScannerPick(rp,row);
      }
      flash('RACK BAG ALREADY COMPLETE ✓');
      return true;
@@ -530,7 +534,7 @@ function handleScan(raw){
  return openAmount('capacity',p);
 }
 function renderNumberButtons(max,handler,pick=false){let n=$('numbers');n.innerHTML='';n.classList.toggle('pickNums',!!pick);max=Math.max(0,Math.min(24,+max||0));for(let i=0;i<=max;i++){let b=document.createElement('button');b.className='num';b.textContent=i;b.onclick=()=>handler(i);n.appendChild(b)}if(max>=24){let b=document.createElement('button');b.className='num';b.textContent='24+';b.onclick=()=>handler(24);n.appendChild(b)}}
-function openAmount(mode,p,row=null){
+function openAmount(mode,p,row=null,source='normal'){
  modalCtx={mode,p,row,stage:mode==='capacity'?'capacity':mode};
  $('modalName').textContent=p.description||p.sku;
  $('modalMeta').innerHTML=`SKU ${p.sku} · ${(p.upcs||[]).join(' / ')||'UPC unknown'} · ${animalTypeOf(p)} · ${brandLabelOf(p)}${weightOf(p.description)!=null?' · '+weightOf(p.description)+' LB':''}`;
@@ -542,8 +546,14 @@ function openAmount(mode,p,row=null){
  }else{
    $('modalMode').textContent='CAPACITY WALK';showCapacityStage();
  }
- $('amountModal').style.left='0px';
- $('amountModal').style.top=(window.scrollY||document.documentElement.scrollTop||0)+'px';
+ if(source==='scan'){
+   $('amountModal').style.left='0';
+   $('amountModal').style.top='0';
+ }else{
+   $('amountModal').classList.remove('scannerPick');
+   $('amountModal').style.left='0px';
+   $('amountModal').style.top=(window.scrollY||document.documentElement.scrollTop||0)+'px';
+ }
  $('amountModal').classList.add('show');
 }
 function showCapacityPickStage(){
@@ -565,8 +575,8 @@ function showCapacityPickStage(){
 function showCapacityStage(){$('modalPrompt').textContent=`Capacity needed now: ${S.capacities[modalCtx.p.sku]??'NOT SET'}`;$('stageTitle').textContent='1 · HOW MANY BAGS DO WE HAVE CAPACITY FOR?';$('pickedNote').textContent='Tap capacity first. Then Pickle will show pick buttons capped at that amount.';renderNumberButtons(12,n=>setCapacityAndPick(n),false)}
 function setCapacityAndPick(n){n=+n;let sku=modalCtx.p.sku;S.capacityOriginal[sku]=n;S.capacityPicked[sku]=0;S.capacities[sku]=n;save();modalCtx.stage='pickCapacity';$('modalPrompt').innerHTML=`<span class="remainingHero">${n}</span> BAGS NEEDED`;$('stageTitle').textContent='2 · HOW MANY ARE YOU PICKING RIGHT NOW?';$('pickedNote').textContent='Picking automatically subtracts from remaining capacity.';renderNumberButtons(n,x=>commitCapacityPick(x),true);render()}
 function commitCapacityPick(n){n=+n;let sku=modalCtx.p.sku,remaining=+S.capacities[sku]||0,pick=Math.min(n,remaining);S.capacityPicked[sku]=(+S.capacityPicked[sku]||0)+pick;S.capacities[sku]=Math.max(0,remaining-pick);save();let left=S.capacities[sku];$('modalPrompt').innerHTML=left?`<span class="remainingHero">${left}</span> BAGS STILL NEEDED`:`<span class="remainingHero">FILLED ✓</span>`;$('stageTitle').textContent=left?'PICK MORE NOW, OR SCAN THE NEXT BAG':'CAPACITY FILLED';$('pickedNote').textContent=`Picked ${pick} now · ${S.capacityPicked[sku]} total picked this cycle · original need ${S.capacityOriginal[sku]}`;renderNumberButtons(left,x=>commitCapacityPick(x),true);render();flash(left?'CAPACITY UPDATED':'CAPACITY FILLED ✓')}
-function commitPickList(n){n=+n;modalCtx.row.picked=(modalCtx.row.picked||0)+n;modalCtx.row.remaining=Math.max(0,modalCtx.row.qty-modalCtx.row.picked);save();$('amountModal').classList.remove('show');render();flash('READY — SCAN NEXT BAG')}
-$('closeModal').onclick=()=> $('amountModal').classList.remove('show');
+function commitPickList(n){n=+n;modalCtx.row.picked=(modalCtx.row.picked||0)+n;modalCtx.row.remaining=Math.max(0,modalCtx.row.qty-modalCtx.row.picked);save();$('amountModal').classList.remove('show','scannerPick');render();flash('READY — SCAN NEXT BAG')}
+$('closeModal').onclick=()=> $('amountModal').classList.remove('show','scannerPick');
 function render(){renderBrandsLeft();renderPlanograms();renderTouchFinder();renderMapping();renderStats();renderCaps();renderCapacityPick();renderMaster();renderUpcs();renderUpdateList();renderPick();renderRack();renderPacking();renderFreightSort();renderAllocation()}
 function renderStats(){$('capCount').textContent=Object.keys(S.capacities).length;$('upcCount').textContent=Object.keys(S.aliases).length;$('masterCount').textContent=Object.keys(S.products).length}
 function itemHtml(p,extra=''){return `<div class="item section-${p.section||'unknown'}"><b>${p.description||p.sku}</b><div class="small muted">SKU ${p.sku} · ${(p.upcs||[]).join(' / ')||'UPC ?'} · ${p.section||'unknown'} ${extra}</div></div>`}
@@ -780,6 +790,7 @@ function renderMapping(){
 }
 $('pickFile').onchange=async e=>{let f=e.target.files[0];if(!f)return;let t=await pdfText(f),rows=parsePickText(t);S.pick={name:f.name,rows};save();render();showView('rack');flash((S.pick?.rows?.length||0)+' PICK ITEMS LOADED');alert(`Loaded ${rows.length} pick-list rows`)};
 function renderPick(){let rows=S.pick?.rows||[];$('pickItems').textContent=rows.length;$('pickRemain').textContent=rows.reduce((a,r)=>a+rackQty(r),0);$('pickRows').innerHTML=rows.map(r=>{let p=S.products[r.sku]||r,q=rackQty(r),orig=(Number(r.qty)>=0&&Number(r.qty)<=9)?Number(r.qty):q;return `<div class="item" onclick="openPickSku('${r.sku}')"><b>${p.description||r.description}</b><div class="small">Need ${orig} · Picked ${r.picked||0} · <b>${q} remaining</b></div></div>`}).join('')||'<div class="muted">No pick list loaded.</div>'}
+window.openRackInline=openRackInline;window.commitRackInlinePick=commitRackInlinePick;
 window.openPickSku=sku=>{let r=S.pick?.rows.find(x=>x.sku===sku);if(r)openAmount('pick',S.products[sku]||r,r)}
 function rackGroupFor(p){
  const d=(p.description||'').toUpperCase(),sec=(p.section||'unknown').toLowerCase();
@@ -916,6 +927,59 @@ function renderBrandsLeft(){
    `<h3 style="margin-top:14px">LEFT</h3>`+(left.map(([name,v])=>`<div class="brandRemainRow"><b>${name}</b><b>${v.remaining}</b></div>`).join('')||'<div class="good">ALL DONE ✓</div>')+
    `<h3 style="margin-top:16px">NONE LEFT / DONE</h3>`+(done.map(([name])=>`<div class="brandRemainRow brandDone"><b>${name}</b><b>0 ✓</b></div>`).join('')||'<div class="muted">None yet.</div>');
 }
+
+let rackInlineSku=null;
+
+function commitRackInlinePick(sku,n){
+ const row=(S.pick?.rows||[]).find(r=>String(r.sku)===String(sku));
+ if(!row)return;
+ n=Math.max(0,Math.min(Number(n)||0,rackQty(row)));
+ row.picked=(Number(row.picked)||0)+n;
+ row.remaining=Math.max(0,(Number(row.qty)||0)-row.picked);
+ rackInlineSku=null;
+ save(); render();
+ flash(n ? ('PICKED '+n+' · '+row.remaining+' LEFT') : 'NO BAGS PICKED');
+}
+
+function openRackInline(ev,sku){
+ if(ev){ev.preventDefault();ev.stopPropagation();}
+ const row=(S.pick?.rows||[]).find(r=>String(r.sku)===String(sku));
+ if(!row||rackQty(row)<=0)return;
+ rackInlineSku=String(sku);
+ renderRack();
+ requestAnimationFrame(()=>{
+   const el=document.querySelector('.rackInlinePick[data-sku="'+CSS.escape(String(sku))+'"]');
+   if(el)el.scrollIntoView({block:'nearest',inline:'nearest'});
+ });
+}
+
+function rackInlineHtml(r){
+ const max=Math.max(0,Math.min(24,rackQty(r)));
+ let nums='';
+ for(let i=0;i<=max;i++) nums+=`<button type="button" class="rackInlineNum" onclick="event.stopPropagation();commitRackInlinePick('${r.sku}',${i})">${i}</button>`;
+ if(rackQty(r)>24) nums+=`<button type="button" class="rackInlineNum" onclick="event.stopPropagation();commitRackInlinePick('${r.sku}',24)">24+</button>`;
+ return `<div class="rackInlinePick" data-sku="${r.sku}">${nums}<button type="button" class="rackInlineCancel" onclick="event.stopPropagation();rackInlineSku=null;renderRack()">×</button></div>`;
+}
+
+function resetZoomForScannerPick(done){
+ const vp=document.querySelector('meta[name="viewport"]');
+ if(!vp){done();return;}
+ vp.setAttribute('content','width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no');
+ window.scrollTo(0,0);
+ setTimeout(()=>{
+   done();
+   setTimeout(()=>vp.setAttribute('content','width=device-width,initial-scale=1,maximum-scale=10,user-scalable=yes'),250);
+ },180);
+}
+
+function openScannerPick(p,row){
+ resetZoomForScannerPick(()=>{
+   const m=$('amountModal');
+   m.classList.add('scannerPick');
+   openAmount('pick',p,row,'scan');
+ });
+}
+
 function renderRack(){
  syncRackControls();
  let rows=rackFilterRows(),groups={};
@@ -923,7 +987,7 @@ function renderRack(){
  let ordered=Object.values(groups).sort((a,b)=>a.order-b.order||a.label.localeCompare(b.label));
  let totalBags=rows.reduce((a,r)=>a+rackQty(r),0);
  if($('rackFilterCount'))$('rackFilterCount').textContent=`${rows.length} ITEMS · ${totalBags} BAGS`;
- $('rackList').innerHTML=ordered.map(g=>`<div class="card rackGroup ${g.kind}"><div class="row"><h3 class="grow">${g.label}</h3><span class="pill">${g.rows.reduce((a,r)=>a+rackQty(r),0)} BAGS</span></div>${g.rows.sort((a,b)=>rackQty(b)-rackQty(a)).map(r=>{let p={...(S.products[r.sku]||{}),...r,description:r.description||(S.products[r.sku]?.description||'')},w=rackWeight(p);return `<button class="rackItem" onclick="openPickSku('${r.sku}')"><span class="rackDesc">${p.description||r.description}${w!=null?` · ${w} LB`:''}</span><span class="rackSku">SKU ${r.sku} · ${rackBrandKey(p)==='UNKNOWN'?'OTHER / UNMAPPED':(BOOT.brandNames[rackBrandKey(p)]||rackBrandKey(p))}</span><span class="rackQty">${rackQty(r)}</span></button>`}).join('')}</div>`).join('')||(S.pick?.rows?.length?'<div class="card muted">Nothing on the active pick list matches this brand/weight filter.</div>':'<div class="card muted">Upload a pick list first.</div>');
+ $('rackList').innerHTML=ordered.map(g=>`<div class="card rackGroup ${g.kind}"><div class="row"><h3 class="grow">${g.label}</h3><span class="pill">${g.rows.reduce((a,r)=>a+rackQty(r),0)} BAGS</span></div>${g.rows.sort((a,b)=>rackQty(b)-rackQty(a)).map(r=>{let p={...(S.products[r.sku]||{}),...r,description:r.description||(S.products[r.sku]?.description||'')},w=rackWeight(p);return rackInlineSku===String(r.sku)?rackInlineHtml(r):`<button class="rackItem" onclick="openRackInline(event,'${r.sku}')"><span class="rackDesc">${p.description||r.description}${w!=null?` · ${w} LB`:''}</span><span class="rackSku">SKU ${r.sku} · ${rackBrandKey(p)==='UNKNOWN'?'OTHER / UNMAPPED':(BOOT.brandNames[rackBrandKey(p)]||rackBrandKey(p))}</span><span class="rackQty">${rackQty(r)}</span></button>`}).join('')}</div>`).join('')||(S.pick?.rows?.length?'<div class="card muted">Nothing on the active pick list matches this brand/weight filter.</div>':'<div class="card muted">Upload a pick list first.</div>');
  applyRackQtyMode();
 }
 function appendPickLayer(name,rows){
