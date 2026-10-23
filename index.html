@@ -61,6 +61,13 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 #rackList .rackQty{display:block!important;flex:0 0 15px!important;width:15px!important;font-size:6px!important;line-height:6px!important;font-weight:900!important;padding:0!important;margin:0!important;text-align:right!important;align-self:center!important;justify-self:auto!important;}
 #rackList{margin:0!important;padding:0!important;}
 #rackList .card,#rackList .item{margin:0!important;padding:0!important;}
+
+/* Zoom-proof pick modal: JS counteracts Safari visual viewport scale. */
+#amountModal.zoomProofPicker{transform-origin:0 0!important;box-sizing:border-box!important;}
+#brandsLeftType button.active{background:#ffad22;color:#111;border-color:#ffad22}
+.brandRemainRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:9px 2px;border-bottom:1px solid #2b313a;align-items:center}
+.brandRemainRow b:last-child{font-size:20px;color:#ffad22}
+.brandDone{opacity:.6}
 </style><style>
 /* v69 absurd density v3: Rack-only density + switchable QTY alignment */
 header{position:static!important;top:auto!important}
@@ -119,6 +126,7 @@ header{position:static!important;top:auto!important}
 <header><div class="brand"><b>🥒 Pickle v69</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
 <nav id="tabs">
 <button class="tab active" data-v="rack">Rack Mode</button>
+<button class="tab" data-v="brandsLeft">Brands Left</button>
 <button class="tab" data-v="pickUpload">Pick List Upload</button>
 <button class="tab" data-v="capacityPick">Capacity Walk</button>
 <button class="tab" data-v="packing">Packing Breakdown</button>
@@ -222,6 +230,15 @@ header{position:static!important;top:auto!important}
  <div class="small muted" style="margin-top:7px">Clears all layered pick lists. Saved product/UPC/capacity knowledge stays.</div>
 </div>
 </section>
+<section class="view" id="brandsLeft">
+ <div class="card">
+  <h2>Brands Left</h2>
+  <div class="row" id="brandsLeftType" style="gap:6px;overflow:auto">
+   <button type="button" data-type="DOG">DOG</button><button type="button" data-type="CAT">CAT</button><button type="button" data-type="LIVESTOCK">LIVESTOCK</button>
+  </div>
+  <div id="brandsLeftSummary" style="margin-top:10px"></div>
+ </div>
+</section>
 <section class="view active" id="rack">
  <div class="card">
   <h2>Rack Mode</h2>
@@ -244,7 +261,7 @@ header{position:static!important;top:auto!important}
   <select id="rackExactWeight" style="width:100%;margin-top:6px"><option value="ALL">ALL AVAILABLE WEIGHTS</option></select>
   <div class="row" style="margin-top:10px">
    <span class="pill" id="rackFilterCount">0 ITEMS</span>
-   <button id="rackResetFilter" type="button">RESET FILTER</button><button id="rackQtyMode" type="button">QTY: FIXED COLUMN</button>
+   <button id="rackResetFilter" type="button">RESET FILTER</button><span class="pill">QTY · FIXED COLUMN</span>
   </div>
   <div class="small muted" style="margin-top:8px">2 lb steps. Products without a readable weight stay visible only when the full weight range is selected.</div>
  </div>
@@ -324,7 +341,7 @@ const KEY='pickleLiteV1';
 let S={capacities:{},capacityOriginal:{},capacityPicked:{},aliases:{},products:{},pick:null,packing:null,mappingMeta:null};
 for(const p of BOOT.catalog) S.products[p.sku]={...p,upcs:p.upc?[String(p.upc)]:[]};
 function load(){try{const x=JSON.parse(localStorage.getItem(KEY)||'null');if(x){S={...S,...x}; for(const p of BOOT.catalog){S.products[p.sku]={...p,...(S.products[p.sku]||{}),upcs:[...new Set([...(p.upc?[String(p.upc)]:[]),...((S.products[p.sku]||{}).upcs||[])])]}}}}catch(e){}}
-function ensureV30(){S.rackFilter=S.rackFilter||{animal:'ALL',brand:'ALL',min:0,max:60,exactWeight:'ALL'};S.mappingMeta=S.mappingMeta||null;S.planograms=S.planograms||{};S.planogramSkuMap=S.planogramSkuMap||{};S.freightSortMap=S.freightSortMap||{};S.freightHistory=S.freightHistory||[];S.capacityOriginal=S.capacityOriginal||{};S.capacityPicked=S.capacityPicked||{}}ensureV30();
+function ensureV30(){S.brandsLeftType=S.brandsLeftType||'DOG';S.rackFilter=S.rackFilter||{animal:'ALL',brand:'ALL',min:0,max:60,exactWeight:'ALL'};S.mappingMeta=S.mappingMeta||null;S.planograms=S.planograms||{};S.planogramSkuMap=S.planogramSkuMap||{};S.freightSortMap=S.freightSortMap||{};S.freightHistory=S.freightHistory||[];S.capacityOriginal=S.capacityOriginal||{};S.capacityPicked=S.capacityPicked||{}}ensureV30();
 function save(){localStorage.setItem(KEY,JSON.stringify(S))}
 load();
 const $=id=>document.getElementById(id), norm=x=>String(x||'').replace(/\D/g,'').replace(/^0+(?=\d)/,'');
@@ -347,6 +364,7 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
  window.scrollTo({top:0,left:0,behavior:'instant'});
  try{render()}catch(err){console.error(err);alert('Tab opened, but refresh failed: '+(err?.message||err))}
 });
+document.querySelectorAll('#brandsLeftType button').forEach(b=>b.onclick=()=>{S.brandsLeftType=b.dataset.type;save();renderBrandsLeft()});
 function activeView(){return document.querySelector('.view.active')?.id||'rack'}
 let bagMatchUPC='',bagVerifySKU='';
 let scanBuf='',scanTimer=0,scanLastKeyAt=0,scanLastCode='',scanLastAt=0;
@@ -493,7 +511,7 @@ function setCapacityAndPick(n){n=+n;let sku=modalCtx.p.sku;S.capacityOriginal[sk
 function commitCapacityPick(n){n=+n;let sku=modalCtx.p.sku,remaining=+S.capacities[sku]||0,pick=Math.min(n,remaining);S.capacityPicked[sku]=(+S.capacityPicked[sku]||0)+pick;S.capacities[sku]=Math.max(0,remaining-pick);save();let left=S.capacities[sku];$('modalPrompt').innerHTML=left?`<span class="remainingHero">${left}</span> BAGS STILL NEEDED`:`<span class="remainingHero">FILLED ✓</span>`;$('stageTitle').textContent=left?'PICK MORE NOW, OR SCAN THE NEXT BAG':'CAPACITY FILLED';$('pickedNote').textContent=`Picked ${pick} now · ${S.capacityPicked[sku]} total picked this cycle · original need ${S.capacityOriginal[sku]}`;renderNumberButtons(left,x=>commitCapacityPick(x),true);render();flash(left?'CAPACITY UPDATED':'CAPACITY FILLED ✓')}
 function commitPickList(n){n=+n;modalCtx.row.picked=(modalCtx.row.picked||0)+n;modalCtx.row.remaining=Math.max(0,modalCtx.row.qty-modalCtx.row.picked);save();$('amountModal').classList.remove('show');render();flash('READY — SCAN NEXT BAG')}
 $('closeModal').onclick=()=> $('amountModal').classList.remove('show');
-function render(){renderPlanograms();renderTouchFinder();renderMapping();renderStats();renderCaps();renderCapacityPick();renderMaster();renderUpcs();renderUpdateList();renderPick();renderRack();renderPacking();renderFreightSort();renderAllocation()}
+function render(){renderBrandsLeft();renderPlanograms();renderTouchFinder();renderMapping();renderStats();renderCaps();renderCapacityPick();renderMaster();renderUpcs();renderUpdateList();renderPick();renderRack();renderPacking();renderFreightSort();renderAllocation()}
 function renderStats(){$('capCount').textContent=Object.keys(S.capacities).length;$('upcCount').textContent=Object.keys(S.aliases).length;$('masterCount').textContent=Object.keys(S.products).length}
 function itemHtml(p,extra=''){return `<div class="item section-${p.section||'unknown'}"><b>${p.description||p.sku}</b><div class="small muted">SKU ${p.sku} · ${(p.upcs||[]).join(' / ')||'UPC ?'} · ${p.section||'unknown'} ${extra}</div></div>`}
 function renderCaps(){let q=($('capSearch')?.value||'').toUpperCase();let arr=Object.entries(S.capacities).map(([sku,cap])=>[S.products[sku]||{sku,description:sku},cap]).filter(([p])=>(p.description+p.sku+(p.upcs||[]).join()).toUpperCase().includes(q));$('capList').innerHTML=arr.length?arr.map(([p,c])=>itemHtml(p,`· REMAINING <b>${c}</b>${S.capacityOriginal[p.sku]!=null?` · ORIGINAL ${S.capacityOriginal[p.sku]} · PICKED ${S.capacityPicked[p.sku]||0}`:''}`)).join(''):'<div class="item muted">No capacities recorded yet. Scan a bag.</div>'}
@@ -804,7 +822,7 @@ function syncRackControls(){
    $('rackPickLayers').innerHTML=layers.length?`<b>${layers.length} LIST${layers.length===1?'':'S'} LAYERED</b> · ${layers.map(x=>x.name).join(' · ')}`:'<span class="muted">No pick lists loaded.</span>';
  }
 }
-function rackQtyMode(){return localStorage.getItem('pickleRackQtyMode')||'column'}
+function rackQtyMode(){return 'column'}
 function measureRackDescriptionWidth(){
  const list=$('rackList');if(!list)return;
  const descs=[...list.querySelectorAll('.rackDesc')];if(!descs.length)return;
@@ -818,6 +836,29 @@ function applyRackQtyMode(){
  const mode=rackQtyMode();list.classList.toggle('qtyPin',mode==='pin');list.classList.toggle('qtyColumn',mode==='column');
  if(btn)btn.textContent=mode==='pin'?'QTY: PIN RIGHT':'QTY: FIXED COLUMN';
  if(mode==='column')requestAnimationFrame(measureRackDescriptionWidth);
+}
+function renderBrandsLeft(){
+ const box=$('brandsLeftSummary');if(!box)return;
+ const type=S.brandsLeftType||'DOG';
+ document.querySelectorAll('#brandsLeftType button').forEach(b=>b.classList.toggle('active',b.dataset.type===type));
+ const all=(S.pick?.rows||[]).filter(r=>{
+   const p={...(S.products[r.sku]||{}),...r,description:r.description||(S.products[r.sku]?.description||'')};
+   return rackAnimalKey(p)===type;
+ });
+ if(!all.length){box.innerHTML='<div class="muted" style="margin-top:12px">No '+type.toLowerCase()+' rows on the loaded pick list.</div>';return}
+ const brands={};
+ for(const r of all){
+   const p={...(S.products[r.sku]||{}),...r,description:r.description||(S.products[r.sku]?.description||'')};
+   const k=rackBrandKey(p),name=k==='UNKNOWN'?'OTHER / UNMAPPED':(BOOT.brandNames[k]||k);
+   const g=brands[name]||(brands[name]={remaining:0,original:0});
+   const q=Number(r.qty);g.original+=Number.isFinite(q)&&q>=0&&q<=99?q:0;g.remaining+=rackQty(r);
+ }
+ const entries=Object.entries(brands).sort((a,b)=>b[1].remaining-a[1].remaining||a[0].localeCompare(b[0]));
+ const left=entries.filter(([,v])=>v.remaining>0),done=entries.filter(([,v])=>v.remaining<=0);
+ const bags=left.reduce((n,[,v])=>n+v.remaining,0);
+ box.innerHTML=`<div class="grid"><div class="stat"><span>BAGS LEFT</span><b>${bags}</b></div><div class="stat"><span>BRANDS LEFT</span><b>${left.length}</b></div><div class="stat"><span>DONE / ZERO</span><b>${done.length}</b></div></div>`+
+   `<h3 style="margin-top:14px">LEFT</h3>`+(left.map(([name,v])=>`<div class="brandRemainRow"><b>${name}</b><b>${v.remaining}</b></div>`).join('')||'<div class="good">ALL DONE ✓</div>')+
+   `<h3 style="margin-top:16px">NONE LEFT / DONE</h3>`+(done.map(([name])=>`<div class="brandRemainRow brandDone"><b>${name}</b><b>0 ✓</b></div>`).join('')||'<div class="muted">None yet.</div>');
 }
 function renderRack(){
  syncRackControls();
@@ -1364,6 +1405,38 @@ $('freightHistoryFiles').onchange=async e=>{
 };
 
 if($('rackQtyMode'))$('rackQtyMode').onclick=()=>{localStorage.setItem('pickleRackQtyMode',rackQtyMode()==='pin'?'column':'pin');applyRackQtyMode()};
+
+// Safari/iPhone pinch-zoom aware amount modal. visualViewport.scale is the actual live page zoom.
+(function(){
+ const modal=$('amountModal'); if(!modal)return;
+ function fit(){
+   if(!modal.classList.contains('show'))return;
+   const vv=window.visualViewport;
+   if(!vv){modal.classList.remove('zoomProofPicker');modal.removeAttribute('style');return}
+   const z=Math.max(.1,Number(vv.scale)||1);
+   // Use page coordinates because iOS Safari's fixed-position behavior changes under pinch zoom.
+   modal.classList.add('zoomProofPicker');
+   modal.style.position='absolute';
+   modal.style.inset='auto';
+   modal.style.left=(vv.pageLeft||window.scrollX||0)+'px';
+   modal.style.top=(vv.pageTop||window.scrollY||0)+'px';
+   modal.style.width=(vv.width*z)+'px';
+   modal.style.minHeight=(vv.height*z)+'px';
+   modal.style.height='auto';
+   modal.style.transformOrigin='0 0';
+   modal.style.transform='scale('+(1/z)+')';
+   modal.style.overflow='auto';
+ }
+ function clear(){
+   if(modal.classList.contains('show'))return;
+   ['position','inset','left','top','width','minHeight','height','transformOrigin','transform','overflow'].forEach(k=>modal.style[k]='');
+   modal.classList.remove('zoomProofPicker');
+ }
+ new MutationObserver(()=>{modal.classList.contains('show')?requestAnimationFrame(()=>{fit();setTimeout(fit,40)}):clear()}).observe(modal,{attributes:true,attributeFilter:['class']});
+ if(window.visualViewport){visualViewport.addEventListener('resize',fit);visualViewport.addEventListener('scroll',fit)}
+ window.addEventListener('orientationchange',()=>setTimeout(fit,150));
+ window.fitPickModalToZoom=fit;
+})();
 
 render();
 </script></body></html<button class="tab" data-v="mapping">UPC→SKU Map</button>
