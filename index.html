@@ -62,19 +62,29 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 #rackList{margin:0!important;padding:0!important;}
 #rackList .card,#rackList .item{margin:0!important;padding:0!important;}
 </style><style>
-/* v69 absurd density v2: maximize viewport + track rows + pin QTY */
+/* v69 absurd density v3: Rack-only density + switchable QTY alignment */
 header{position:static!important;top:auto!important}
 #rackList .rackItem:nth-child(odd){background:#0c1014!important}
 #rackList .rackItem:nth-child(even){background:#171c22!important}
-#rackList .rackQty{
-  position:sticky!important;
-  right:0!important;
-  z-index:4!important;
-  background:inherit!important;
-  padding-left:2px!important;
-  text-align:right!important;
-}
 #rackList .rackItem{overflow:visible!important}
+#rackList .rackQty{background:inherit!important;text-align:right!important;z-index:4!important}
+/* PIN RIGHT: quantity hugs the visible right edge when the browser honors sticky during horizontal pan. */
+#rackList.qtyPin .rackQty{position:sticky!important;right:0!important;flex:0 0 15px!important;width:15px!important;padding-left:2px!important}
+/* FIXED COLUMN: every QTY sits immediately after the longest visible description. */
+#rackList.qtyColumn .rackItem{width:calc(var(--rack-desc-width,150px) + 18px)!important;min-width:calc(var(--rack-desc-width,150px) + 18px)!important;max-width:none!important}
+#rackList.qtyColumn .rackDesc{flex:0 0 var(--rack-desc-width,150px)!important;width:var(--rack-desc-width,150px)!important;min-width:var(--rack-desc-width,150px)!important;max-width:var(--rack-desc-width,150px)!important;overflow:visible!important}
+#rackList.qtyColumn .rackQty{position:static!important;flex:0 0 15px!important;width:15px!important;padding-left:2px!important}
+#rackQtyMode{font-size:10px;padding:5px 7px;white-space:nowrap}
+/* Explicitly restore the quantity modal to the original large touch UI. */
+#amountModal{font-size:16px!important;line-height:normal!important;padding:16px!important}
+#amountModal h1{font-size:30px!important;line-height:1.15!important;margin:6px 0!important}
+#amountModal .sub{font-size:15px!important;line-height:normal!important}
+#amountModal .big{font-size:28px!important;line-height:normal!important}
+#amountModal .stageTitle{font-size:16px!important;line-height:normal!important;margin-top:16px!important}
+#amountModal .pickedNote{font-size:14px!important;line-height:normal!important;margin:5px 0!important}
+#amountModal .numbers{display:grid!important;grid-template-columns:repeat(4,1fr)!important;gap:9px!important;margin:18px 0!important}
+#amountModal .num{font-size:25px!important;line-height:normal!important;padding:17px 5px!important;border-radius:14px!important;min-height:0!important;height:auto!important}
+#amountModal .close{font-size:16px!important;padding:11px 13px!important;border-radius:10px!important}
 </style>
 
 </head>
@@ -234,7 +244,7 @@ header{position:static!important;top:auto!important}
   <select id="rackExactWeight" style="width:100%;margin-top:6px"><option value="ALL">ALL AVAILABLE WEIGHTS</option></select>
   <div class="row" style="margin-top:10px">
    <span class="pill" id="rackFilterCount">0 ITEMS</span>
-   <button id="rackResetFilter" type="button">RESET FILTER</button>
+   <button id="rackResetFilter" type="button">RESET FILTER</button><button id="rackQtyMode" type="button">QTY: FIXED COLUMN</button>
   </div>
   <div class="small muted" style="margin-top:8px">2 lb steps. Products without a readable weight stay visible only when the full weight range is selected.</div>
  </div>
@@ -794,6 +804,21 @@ function syncRackControls(){
    $('rackPickLayers').innerHTML=layers.length?`<b>${layers.length} LIST${layers.length===1?'':'S'} LAYERED</b> · ${layers.map(x=>x.name).join(' · ')}`:'<span class="muted">No pick lists loaded.</span>';
  }
 }
+function rackQtyMode(){return localStorage.getItem('pickleRackQtyMode')||'column'}
+function measureRackDescriptionWidth(){
+ const list=$('rackList');if(!list)return;
+ const descs=[...list.querySelectorAll('.rackDesc')];if(!descs.length)return;
+ const c=document.createElement('canvas'),ctx=c.getContext('2d');
+ ctx.font='600 4.5px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
+ let max=0;for(const el of descs)max=Math.max(max,ctx.measureText(el.textContent||'').width);
+ list.style.setProperty('--rack-desc-width',Math.ceil(max+3)+'px');
+}
+function applyRackQtyMode(){
+ const list=$('rackList'),btn=$('rackQtyMode');if(!list)return;
+ const mode=rackQtyMode();list.classList.toggle('qtyPin',mode==='pin');list.classList.toggle('qtyColumn',mode==='column');
+ if(btn)btn.textContent=mode==='pin'?'QTY: PIN RIGHT':'QTY: FIXED COLUMN';
+ if(mode==='column')requestAnimationFrame(measureRackDescriptionWidth);
+}
 function renderRack(){
  syncRackControls();
  let rows=rackFilterRows(),groups={};
@@ -802,6 +827,7 @@ function renderRack(){
  let totalBags=rows.reduce((a,r)=>a+rackQty(r),0);
  if($('rackFilterCount'))$('rackFilterCount').textContent=`${rows.length} ITEMS · ${totalBags} BAGS`;
  $('rackList').innerHTML=ordered.map(g=>`<div class="card rackGroup ${g.kind}"><div class="row"><h3 class="grow">${g.label}</h3><span class="pill">${g.rows.reduce((a,r)=>a+rackQty(r),0)} BAGS</span></div>${g.rows.sort((a,b)=>rackQty(b)-rackQty(a)).map(r=>{let p={...(S.products[r.sku]||{}),...r,description:r.description||(S.products[r.sku]?.description||'')},w=rackWeight(p);return `<button class="rackItem" onclick="openPickSku('${r.sku}')"><span class="rackDesc">${p.description||r.description}${w!=null?` · ${w} LB`:''}</span><span class="rackSku">SKU ${r.sku} · ${rackBrandKey(p)==='UNKNOWN'?'OTHER / UNMAPPED':(BOOT.brandNames[rackBrandKey(p)]||rackBrandKey(p))}</span><span class="rackQty">${rackQty(r)}</span></button>`}).join('')}</div>`).join('')||(S.pick?.rows?.length?'<div class="card muted">Nothing on the active pick list matches this brand/weight filter.</div>':'<div class="card muted">Upload a pick list first.</div>');
+ applyRackQtyMode();
 }
 function appendPickLayer(name,rows){
  S.pick=S.pick||{name:'Layered Rack Pick',rows:[],layers:[]};
@@ -1336,6 +1362,8 @@ $('freightHistoryFiles').onchange=async e=>{
  for(const f of files){let t=await pdfText(f),rows=parsePacking(t);if(rows.length)loaded.push({name:f.name,rows})}
  S.freightHistory=loaded;save();$('freightHistoryStatus').textContent=`${loaded.length} packing lists · ${loaded.reduce((n,x)=>n+x.rows.length,0)} SKU rows loaded`;renderFreightSort()
 };
+
+if($('rackQtyMode'))$('rackQtyMode').onclick=()=>{localStorage.setItem('pickleRackQtyMode',rackQtyMode()==='pin'?'column':'pin');applyRackQtyMode()};
 
 render();
 </script></body></html<button class="tab" data-v="mapping">UPC→SKU Map</button>
