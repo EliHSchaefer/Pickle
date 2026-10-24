@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=10,user-scalable=yes">
-<title>Pickle v71</title>
+<title>Pickle v74</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{--bg:#0b0d10;--card:#15191f;--line:#2b313a;--amber:#ffad22;--text:#f5f7fa;--muted:#9ba5b1;--green:#35d07f;--red:#ff6262}
@@ -181,9 +181,9 @@ header{position:static!important;top:auto!important}
   </div>
 </div>
 <div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v72</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
+<header><div class="brand"><b>🥒 Pickle v74</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
 <nav id="tabs">
-<button class="tab active" data-v="rack">Rack Mode</button>
+<button class="tab active" data-v="rack">Pickle-ist Mode</button>
 <button class="tab" data-v="brandsLeft">Brands Left</button>
 <button class="tab" data-v="pickUpload">Pick List Upload</button>
 <button class="tab" data-v="capacityPick">Capacity Walk</button>
@@ -306,7 +306,7 @@ header{position:static!important;top:auto!important}
 </section>
 <section class="view active" id="rack">
  <div class="card">
-  <h2>Rack Mode</h2>
+  <h2>Pickle-ist Mode</h2>
    <div id="rackPickLayers" class="small" style="margin-top:10px"></div>
   </div>
   <div class="muted">Upload a pick list, filter however you want, then either TAP a bag or SCAN it with the Bluetooth scanner. Scanning works even when that bag is hidden by the current filters.</div>
@@ -812,26 +812,36 @@ function rackSection(p){
  const sku=String(p.sku||'');
  const boot=BOOT.catalog.find(x=>String(x.sku)===sku);
  const master=S.products?.[sku]||{};
- const d=String(p.description||master.description||boot?.description||'').toUpperCase();
+ const d=String(p.description||master.description||boot?.description||'').trim().toUpperCase();
+ const brand=brandOf(d);
+ const explicit=String(S.skuCategoryOverrides?.[sku]||'').toLowerCase();
+ if(['dog','cat','equine','livestock','poultry','wildbird'].includes(explicit))return explicit;
+ // SKU-level knowledge is authoritative; planogram membership is additional evidence,
+ // not a requirement for an item to belong to an animal category.
  const known=String(boot?.section||'').toLowerCase();
- if(known==='dog'||known==='cat'||known==='equine'||known==='livestock')return known;
+ if(['dog','cat','equine','livestock'].includes(known))return known;
  if(known==='bird')return 'poultry';
- // Science Diet appears in both dog and cat catalogs. Classify the product,
- // not whether the exact SKU happened to be in the preloaded master list.
- if(/^SD\s/.test(d)){
-   if(/\b(CAT|KITTEN|FELINE|INDOOR CHKN|HAIRBALL|URINARY CAT)\b/.test(d))return 'cat';
-   return 'dog';
- }
- // Strong identifiers, rather than a planogram's imported category.
- if(/^(DM NAT|DIAM|4HLTH|PPLN|BB |SPMX|PDGR|WHLSM|VICTOR|TOTW|FAS |GRV TRN|BNFL|KNB |DOG CHOW|PUPPY CHOW)\b/.test(d))return 'dog';
- if(/^(RW |CL WILD)\b|WILD BIRD|BIRD SEED|CARDINAL|SUNFLOWER|SUET|FINCH|SONGBIRD/.test(d))return 'wildbird';
+ // Litter and non-feed products must not be swept into DOG by shared brands.
+ if(/LITTER|NON.CLUMP|SCOOPABLE|HARDBALL|DOUBLE DUTY|CAT LIT|CLUMPING/.test(d))return 'cat';
+ if(/^(RW |CL WILD)|WILD BIRD|BIRD SEED|CARDINAL|SUNFLOWER|SUET|FINCH|SONGBIRD/.test(d))return 'wildbird';
  if(/MEATBIRD|LAYER|LAYENA|FLOCK|SCRATCH|DUCK|HEARTY HEN|FEATHER FIXER|OYSTER SHELL|GAME BIRD|POULTRY|CHICKEN FEED/.test(d))return 'poultry';
- if(/HORSE|EQUINE|OMOLENE|SAFECHOICE|PROFORCE|SENTINEL|RENEW GOLD|TRIUMPH SENIOR|ULTIUM|STRATEGY PROFESSIONAL/.test(d))return 'equine';
- if(/CATTLE|CALF|GOAT|SHEEP|SWINE|HOG|PIG|RABBIT|DEER/.test(d))return 'livestock';
+ if(/HORSE|EQUINE|OMOLENE|SAFECHOICE|PROFORCE|SENTINEL|RENEW GOLD|TRIUMPH SENIOR|ULTIUM|STRATEGY PROFESSIONAL|RATION BALANCER|APPLE WAFERS/.test(d))return 'equine';
+ if(/CATTLE|CALF|GOAT|SHEEP|SWINE|HOG|PIG|RABBIT|DEER|BEET PULP|ALFALFA|TIMOTHY HAY|SMART BEET/.test(d))return 'livestock';
  if(/CAT|KITTEN|FELINE|FRSK|MMIX|KTNKBD|9LVS|CT CHOW/.test(d))return 'cat';
+ if(/^(DM NAT|DIAM|4HLTH|PPLN|BB |SPMX|PDGR|WHLSM|VICTOR|TOTW|FAS |GRV TRN|BNFL|KNB |DOG CHOW|PUPPY CHOW)\b/.test(d))return 'dog';
+ // Mixed dog/cat brands: recognize product wording before falling back to SKU data.
+ if(['cat','dog'].includes(String(master.section||'').toLowerCase()))return String(master.section).toLowerCase();
+ if(brand==='SD')return 'dog';
+ if(brand==='IAMS')return 'dog';
+ if(brand==='ONE')return 'dog';
+ if(/DOG|PUPPY|CANINE|K9|ADULT LG BRD|LG BRD|SM BRD|L&R|SK&ST|SK&COAT/.test(d))return 'dog';
  const sec=String(master.section||p.section||'').toLowerCase();
- if(['dog','cat','equine','livestock'].includes(sec))return sec;
+ if(['dog','cat','equine','livestock','poultry','wildbird'].includes(sec))return sec;
  if(sec==='bird')return 'poultry';
+ // An imported planogram can fill a gap, but should not reclassify a recognized SKU.
+ const pg=String(S.planogramSkuMap?.[sku]||master.planogram||p.planogram||'');
+ const category=String(S.planograms?.[pg]?.category||'').toLowerCase();
+ if(['dog','cat','equine','livestock','poultry','wildbird'].includes(category))return category;
  return 'other';
 }
 function rackGroupFor(p){
