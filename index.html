@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=10,user-scalable=yes">
-<title>Pickle v70</title>
+<title>Pickle v71</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{--bg:#0b0d10;--card:#15191f;--line:#2b313a;--amber:#ffad22;--text:#f5f7fa;--muted:#9ba5b1;--green:#35d07f;--red:#ff6262}
@@ -148,7 +148,11 @@ header{position:static!important;top:auto!important}
 }
 </style>
 
-</head>
+<style>
+#rackList .rackAnimalHeader{color:#ffb020;font-weight:950;font-size:13px;line-height:16px;letter-spacing:.45px;padding:5px 3px 2px;border-top:1px solid #424953;background:#222a33}
+#rackList .rackGroup h3{color:#ffb020!important;font-size:10px!important;line-height:12px!important;height:auto!important;min-height:12px!important;padding:1px 2px!important;letter-spacing:.1px!important}
+#rackList .rackGroup .row{min-height:12px!important}
+</style></head>
 <body>
 <div id="bagMatchBar">
   <div id="bagMatchTitle">BAG SCAN</div>
@@ -177,7 +181,7 @@ header{position:static!important;top:auto!important}
   </div>
 </div>
 <div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v70</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
+<header><div class="brand"><b>🥒 Pickle v71</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
 <nav id="tabs">
 <button class="tab active" data-v="rack">Rack Mode</button>
 <button class="tab" data-v="brandsLeft">Brands Left</button>
@@ -802,16 +806,29 @@ $('pickFile').onchange=async e=>{let f=e.target.files[0];if(!f)return;let t=awai
 function renderPick(){let rows=S.pick?.rows||[];$('pickItems').textContent=rows.length;$('pickRemain').textContent=rows.reduce((a,r)=>a+rackQty(r),0);$('pickRows').innerHTML=rows.map(r=>{let p=S.products[r.sku]||r,q=rackQty(r),orig=(Number(r.qty)>=0&&Number(r.qty)<=9)?Number(r.qty):q;return `<div class="item" onclick="openPickSku('${r.sku}')"><b>${p.description||r.description}</b><div class="small">Need ${orig} · Picked ${r.picked||0} · <b>${q} remaining</b></div></div>`}).join('')||'<div class="muted">No pick list loaded.</div>'}
 window.openRackInline=openRackInline;window.commitRackInlinePick=commitRackInlinePick;
 window.openPickSku=sku=>{let r=S.pick?.rows.find(x=>x.sku===sku);if(r)openAmount('pick',S.products[sku]||r,r)}
+// v71: authoritative SKU master classification, then conservative description fallback.
+function rackSection(p){
+ const sku=String(p.sku||'');
+ const master=S.products?.[sku]||{};
+ const boot=BOOT.catalog?.find(x=>String(x.sku)===sku)||{};
+ const d=String(p.description||master.description||boot.description||'').toUpperCase();
+ let sec=String(p.section||'').toLowerCase();
+ if(!['dog','cat','bird','equine','livestock'].includes(sec))sec=String(master.section||boot.section||'').toLowerCase();
+ // Known dog-food identifiers that may be absent from the catalog or section map.
+ if(/^DM\s*NAT\b/.test(d)||/^DIAM\s+\d+LB/.test(d)||/^4HLTH\s+\d+LB/.test(d))return 'dog';
+ if(/\b(WILD BIRD|BIRD SEED|SUNFLOWER|CARDINAL|SONGBIRD|SUET)\b/.test(d))return 'wildbird';
+ if(/\b(CHICKEN|POULTRY|LAYER|LAYENA|MEATBIRD|FLOCK|SCRATCH|DUCK|TURKEY|GAME BIRD|OYSTER SHELL)\b/.test(d)||sec==='bird')return 'poultry';
+ if(/\b(HORSE|EQUINE|OMOLENE|SAFECHOICE|PROFORCE|STRATEGY PROFESSIONAL|SENTINEL|RENEW GOLD)\b/.test(d)||sec==='equine')return 'equine';
+ if(/\b(CATTLE|CALF|GOAT|SHEEP|SWINE|HOG|PIG|RABBIT|DEER)\b/.test(d)||sec==='livestock')return 'livestock';
+ if(sec==='dog'||sec==='cat')return sec;
+ return 'other';
+}
 function rackGroupFor(p){
- const d=(p.description||'').toUpperCase(),sec=(p.section||'unknown').toLowerCase();
- if(sec==='dog'){const b=brandOf(p.description||'');return {order:10,label:`DOG · ${BOOT.brandNames[b]||b}`,kind:'dog'}}
- if(sec==='cat')return {order:30,label:'CAT FOOD',kind:'cat'};
- if(/CAT.*LITTER|LITTER.*CAT|KITTY LITTER|CAT LTR|LITTER PAIL|CAT.*PAIL/.test(d))return {order:50,label:'CAT LITTER · BAGS / PAILS',kind:'litter'};
- if(sec==='bird'&&!/CHICK|POULTRY|LAYER|MEATBIRD|GAMEBIRD|TURKEY|DUCK/.test(d))return {order:40,label:'BIRD FOOD',kind:'bird'};
- if(sec==='equine'||/EQUINE|HORSE/.test(d))return {order:61,label:'LIVESTOCK · HORSE / EQUINE',kind:'livestock'};
- if(sec==='livestock'||/CATTLE|CALF|GOAT|SHEEP|SWINE|HOG|PIG|RABBIT|DEER/.test(d))return {order:62,label:'LIVESTOCK · CATTLE / OTHER',kind:'livestock'};
- if(sec==='bird'||/CHICK|POULTRY|LAYER|MEATBIRD|GAMEBIRD|TURKEY|DUCK/.test(d))return {order:63,label:'LIVESTOCK · CHICKEN / POULTRY',kind:'livestock'};
- return {order:90,label:'OTHER / UNMAPPED',kind:'other'}
+ const sec=rackSection(p),brand=rackBrandKey(p);
+ const brandName=BOOT.brandNames[brand]||brand;
+ const types={dog:[10,'DOG','dog'],cat:[20,'CAT','cat'],wildbird:[30,'WILD BIRD','bird'],poultry:[40,'CHICKEN / POULTRY','livestock'],equine:[50,'EQUINE','livestock'],livestock:[60,'CATTLE / LIVESTOCK','livestock'],other:[90,'OTHER / UNMAPPED','other']};
+ const [order,animal,kind]=types[sec]||types.other;
+ return {order,animal,brand:brandName,label:animal+' · '+brandName,kind};
 }
 function rackQty(r){
  let q=Number(r.qty),picked=Number(r.picked)||0,rem=Number(r.remaining);
@@ -827,14 +844,11 @@ function rackQty(r){
 function rackBrandKey(p){return brandOf(p?.description||'')||'UNKNOWN'}
 function rackWeight(p){return weightOf(p?.description||'')}
 function rackAnimalKey(p){
- const raw=String(animalTypeOf(p)||'').toUpperCase();
- const d=String(p?.description||'').toUpperCase();
- // Cat/cat litter is explicitly separate from cattle/livestock.
- if(raw.includes('CAT')||/\b(CAT|KITTEN|FELINE|LITTER|TIDY CATS|CAT CHOW)\b/.test(d))return 'CAT';
- if(raw.includes('DOG')||/\b(DOG|PUPPY|CANINE)\b/.test(d))return 'DOG';
- if(raw.includes('CHICK')||raw.includes('POULTRY')||raw.includes('EQUINE')||raw.includes('CATTLE')||raw.includes('LIVESTOCK')||raw.includes('HORSE')||
-    /\b(CATTLE|CALF|COW|BOVINE|HORSE|EQUINE|GOAT|SHEEP|SWINE|PIG|HOG|RABBIT|CHICK|CHICKEN|POULTRY|LAYER|FLOCK|DUCK|TURKEY)\b/.test(d))return 'LIVESTOCK';
- if(raw.includes('BIRD')||/\b(WILD BIRD|BIRD SEED|SONGBIRD|SUNFLOWER SEED|CARDINAL)\b/.test(d))return 'BIRD';
+ const sec=rackSection(p);
+ if(sec==='dog')return 'DOG';
+ if(sec==='cat')return 'CAT';
+ if(['poultry','equine','livestock'].includes(sec))return 'LIVESTOCK';
+ if(sec==='wildbird')return 'BIRD';
  return 'OTHER';
 }
 function rackFilterRows(){
@@ -861,7 +875,7 @@ function syncRackControls(){
  const presentAnimals=animalOrder.filter(a=>all.some(r=>rackAnimalKey({...S.products[r.sku],...r,description:r.description||S.products[r.sku]?.description})===a));
  let asel=$('rackAnimal');
  if(asel){
-   const labels={DOG:'DOG',CAT:'CAT / CAT LITTER',LIVESTOCK:'CATTLE / LIVESTOCK',BIRD:'WILD BIRD',OTHER:'OTHER / UNMAPPED'};
+   const labels={DOG:'DOG',CAT:'CAT / CAT LITTER',LIVESTOCK:'LIVESTOCK · ALL TYPES',BIRD:'WILD BIRD',OTHER:'OTHER / UNMAPPED'};
    asel.innerHTML='<option value="ALL">ALL ANIMALS / TYPES</option>'+presentAnimals.map(a=>`<option value="${a}">${labels[a]}</option>`).join('');
    if(f0.animal!=='ALL'&&!presentAnimals.includes(f0.animal))f0.animal='ALL';
    asel.value=f0.animal;
@@ -997,7 +1011,12 @@ function renderRack(){
  let ordered=Object.values(groups).sort((a,b)=>a.order-b.order||a.label.localeCompare(b.label));
  let totalBags=rows.reduce((a,r)=>a+rackQty(r),0);
  if($('rackFilterCount'))$('rackFilterCount').textContent=`${rows.length} ITEMS · ${totalBags} BAGS`;
- $('rackList').innerHTML=ordered.map(g=>`<div class="card rackGroup ${g.kind}"><div class="row"><h3 class="grow">${g.label}</h3><span class="pill">${g.rows.reduce((a,r)=>a+rackQty(r),0)} BAGS</span></div>${g.rows.sort((a,b)=>rackQty(b)-rackQty(a)).map(r=>{let p={...(S.products[r.sku]||{}),...r,description:r.description||(S.products[r.sku]?.description||'')},w=rackWeight(p);return rackInlineSku===String(r.sku)?rackInlineHtml(r):`<button class="rackItem" onclick="openRackInline(event,'${r.sku}')"><span class="rackDesc">${p.description||r.description}${w!=null?` · ${w} LB`:''}</span><span class="rackSku">SKU ${r.sku} · ${rackBrandKey(p)==='UNKNOWN'?'OTHER / UNMAPPED':(BOOT.brandNames[rackBrandKey(p)]||rackBrandKey(p))}</span><span class="rackQty">${rackQty(r)}</span></button>`}).join('')}</div>`).join('')||(S.pick?.rows?.length?'<div class="card muted">Nothing on the active pick list matches this brand/weight filter.</div>':'<div class="card muted">Upload a pick list first.</div>');
+ let lastAnimal='';
+ $('rackList').innerHTML=ordered.map(g=>{
+   const animalHeader=g.animal!==lastAnimal?`<div class="rackAnimalHeader">${g.animal}</div>`:'';
+   lastAnimal=g.animal;
+   return animalHeader+`<div class="card rackGroup ${g.kind}"><div class="row"><h3 class="grow">${g.brand}</h3><span class="pill">${g.rows.reduce((a,r)=>a+rackQty(r),0)} BAGS</span></div>${g.rows.sort((a,b)=>rackQty(b)-rackQty(a)).map(r=>{let p={...(S.products[r.sku]||{}),...r,description:r.description||(S.products[r.sku]?.description||'')},w=rackWeight(p);return rackInlineSku===String(r.sku)?rackInlineHtml(r):`<button class="rackItem" onclick="openRackInline(event,'${r.sku}')"><span class="rackDesc">${p.description||r.description}${w!=null?` · ${w} LB`:''}</span><span class="rackSku">SKU ${r.sku}</span><span class="rackQty">${rackQty(r)}</span></button>`}).join('')}</div>`;
+ }).join('')||(S.pick?.rows?.length?'<div class="card muted">Nothing on the active pick list matches this brand/weight filter.</div>':'<div class="card muted">Upload a pick list first.</div>');
  applyRackQtyMode();
 }
 function appendPickLayer(name,rows){
