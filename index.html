@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=10,user-scalable=yes">
-<title>Pickle v69</title>
+<title>Pickle v70</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{--bg:#0b0d10;--card:#15191f;--line:#2b313a;--amber:#ffad22;--text:#f5f7fa;--muted:#9ba5b1;--green:#35d07f;--red:#ff6262}
@@ -92,6 +92,9 @@ header{position:static!important;top:auto!important}
 #amountModal .numbers{display:grid!important;grid-template-columns:repeat(4,1fr)!important;gap:9px!important;margin:18px 0!important}
 #amountModal .num{font-size:25px!important;line-height:normal!important;padding:17px 5px!important;border-radius:14px!important;min-height:0!important;height:auto!important}
 #amountModal .close{font-size:16px!important;padding:11px 13px!important;border-radius:10px!important}
+#rackList .rackGroup h3{color:#ffb020!important;font-size:7px!important;line-height:9px!important;height:auto!important;font-weight:950!important;letter-spacing:.1px!important}
+.capWalkRow{width:100%;display:flex;justify-content:space-between;text-align:left;align-items:center;margin-bottom:5px;gap:12px;background:#15191f;border:1px solid #303843}.capWalkRow strong{color:#ffb020}.capWalkRow b{font-size:24px;color:#ffb020}
+.packGroupRow:active{background:#343b45}.brandDrillRow td{background:#10141a;padding:12px 5px}
 </style>
 
 
@@ -174,13 +177,13 @@ header{position:static!important;top:auto!important}
   </div>
 </div>
 <div id="scanFlash">SCAN RECEIVED</div>
-<header><div class="brand"><b>🥒 Pickle v69</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="cameraScanBtn" type="button">📷 SCAN BAG</button><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
+<header><div class="brand"><b>🥒 Pickle v70</b><span class="pill" id="scannerStatus">Bluetooth/HID ready</span><button id="hidTestBtn" type="button" style="background:#222;color:#fff;border:1px solid #555;border-radius:11px;padding:10px 12px;font-weight:800">⌁ HID READY</button></div>
 <nav id="tabs">
 <button class="tab active" data-v="rack">Rack Mode</button>
 <button class="tab" data-v="brandsLeft">Brands Left</button>
 <button class="tab" data-v="pickUpload">Pick List Upload</button>
 <button class="tab" data-v="capacityPick">Capacity Walk</button>
-<button class="tab" data-v="packing">Packing Breakdown</button>
+<button class="tab" data-v="packing">Packing Breakdown</button><button class="tab" data-v="planograms">Planograms</button>
 </nav></header><main>
 <section class="view" id="mapping">
  <div class="card"><h2>UPC → SKU Mapping PDF</h2>
@@ -199,7 +202,7 @@ header{position:static!important;top:auto!important}
 <h2>Capacity Walk</h2>
 <div class="card"><b>SCAN → TAP CAPACITY → NEXT BAG</b><div class="muted small" style="margin-top:8px">This is just a physical capacity recorder. Scan a bag and tap 0–12. Scanning it again lets you overwrite the saved capacity.</div></div>
 <div class="card"><div class="stat"><span>Known capacities</span><b id="capPickCount">0</b></div><div class="small muted" style="margin-top:8px">No pick-list quantity, on-hand, or remaining calculation.</div></div>
-<div id="capPickRows"></div>
+<div class="card"><input id="capWalkSearch" placeholder="Search recorded capacities by SKU, brand or UPC"><div class="small muted" style="margin-top:8px">Tap a recorded product to update its capacity.</div></div><div id="capPickRows"></div>
 </section>
 <section class="view" id="packing">
  <div class="card">
@@ -336,7 +339,7 @@ header{position:static!important;top:auto!important}
  <div class="muted">Upload planogram PDFs in bulk. <b>The PDF filename is the category name.</b> Pickle extracts the 7-digit SKUs from planogram SKU rows and permanently maps those SKUs to that filename.</div>
  <input id="planogramFiles" type="file" accept=".pdf" multiple>
  <div class="small muted" style="margin-top:8px">Example: <b>Dog Toys.pdf</b> → category <b>Dog Toys</b>. Re-uploading a newer file updates that category. Existing UPCs, capacities and SKU Master data are preserved.</div>
- <div id="planogramImportStatus" class="small muted" style="margin-top:8px">No planograms imported this session.</div></div>
+ <div class="row" style="margin-top:10px;flex-wrap:wrap"><label class="grow">Default category<select id="pgImportCategory"><option value="auto">Auto / review</option><option value="dog">Dog Food</option><option value="cat">Cat Food</option><option value="wildbird">Wild Bird</option><option value="poultry">Chicken / Poultry</option><option value="equine">Equine</option><option value="livestock">Cattle / Livestock</option></select></label><label class="grow">Aisle / planogram label<input id="pgImportAisle" placeholder="Optional: e.g. sidewall"></label></div><div class="small muted">After import, change each file's category and override individual SKUs below. Existing saved mappings remain until changed.</div><div id="planogramImportStatus" class="small muted" style="margin-top:8px">No planograms imported this session.</div></div>
  <div class="card"><div class="grid">
   <div class="stat"><span>Planogram files</span><b id="pgFileCount">0</b></div>
   <div class="stat"><span>Mapped SKUs</span><b id="pgSkuCount">0</b></div>
@@ -344,7 +347,7 @@ header{position:static!important;top:auto!important}
   <div class="stat"><span>Inbound unmapped</span><b id="pgInboundUnmapped">—</b></div>
  </div></div>
  <div class="card"><h3>Imported planograms</h3><div id="planogramList" class="scroll"></div></div>
- <div class="card"><h3>Unmapped inbound SKUs</h3><div class="muted small">These are packing-list SKUs that are not present in any uploaded planogram.</div><div id="planogramUnmapped" class="scroll"></div></div>
+ <div class="card"><h3>Assign individual SKU to another category</h3><div class="grid"><input id="pgOverrideSku" inputmode="numeric" placeholder="7-digit SKU"><select id="pgOverrideCategory"><option value="dog">Dog Food</option><option value="cat">Cat Food</option><option value="wildbird">Wild Bird</option><option value="poultry">Chicken / Poultry</option><option value="equine">Equine</option><option value="livestock">Cattle / Livestock</option></select><input id="pgOverrideAisle" placeholder="Aisle / planogram name"><button type="button" id="pgOverrideSave" class="primary">SAVE SKU ASSIGNMENT</button></div></div><div class="card"><h3>Unmapped inbound SKUs</h3><div class="muted small">These are packing-list SKUs that are not present in any uploaded planogram.</div><div id="planogramUnmapped" class="scroll"></div></div>
 </section>
 <section class="view" id="fresh">
  <div class="card">
@@ -524,7 +527,7 @@ function handleScan(raw){
  }
  // Quantity/pick only. Matching/correction UI intentionally removed.
  showBagAction(code);
- if(v==='capacityPick') return openAmount('capacityPick',p);
+ if(v==='capacityPick') return openCapacityWalk(p);
  if(v==='pick'){
    let row=S.pick?.rows?.find(r=>String(r.sku)===String(p.sku)||norm(r.upc||'')===code);
    if(row&&rackQty(row)>0)return openAmount('pick',S.products[row.sku]||p,row);
@@ -583,14 +586,21 @@ function itemHtml(p,extra=''){return `<div class="item section-${p.section||'unk
 function renderCaps(){let q=($('capSearch')?.value||'').toUpperCase();let arr=Object.entries(S.capacities).map(([sku,cap])=>[S.products[sku]||{sku,description:sku},cap]).filter(([p])=>(p.description+p.sku+(p.upcs||[]).join()).toUpperCase().includes(q));$('capList').innerHTML=arr.length?arr.map(([p,c])=>itemHtml(p,`· REMAINING <b>${c}</b>${S.capacityOriginal[p.sku]!=null?` · ORIGINAL ${S.capacityOriginal[p.sku]} · PICKED ${S.capacityPicked[p.sku]||0}`:''}`)).join(''):'<div class="item muted">No capacities recorded yet. Scan a bag.</div>'}
 $('capSearch').oninput=renderCaps;
 function renderCapacityPick(){
- const entries=Object.entries(S.cap||{}).filter(([k,v])=>v!==null&&v!==undefined);
- if($('capPickCount'))$('capPickCount').textContent=entries.length;
+ const q=($('capWalkSearch')?.value||'').toUpperCase().trim();
+ const entries=Object.entries(S.capacityOriginal||{}).filter(([sku,v])=>v!==null&&v!==undefined).map(([sku,cap])=>({sku,cap,p:S.products[sku]||{sku,description:'SKU '+sku,upcs:[]}})).filter(x=>(x.sku+' '+x.p.description+' '+(x.p.upcs||[]).join(' ')).toUpperCase().includes(q)).sort((a,b)=>brandLabelOf(a.p).localeCompare(brandLabelOf(b.p))||a.p.description.localeCompare(b.p.description));
+ if($('capPickCount'))$('capPickCount').textContent=Object.keys(S.capacityOriginal||{}).length;
  if(!$('capPickRows'))return;
- $('capPickRows').innerHTML=entries.map(([upc,cap])=>{
-   let p=resolve(upc),name=p?.description||('UPC '+upc);
-   return `<div class="item" onclick="openAmount('capacity',resolve('${upc}'))"><b>${name}</b><div class="small">Capacity <b>${cap}</b> · tap to override</div></div>`;
- }).join('')||'<div class="card muted">No capacities recorded yet. Scan your first bag.</div>';
+ $('capPickRows').innerHTML=entries.map(x=>`<button type="button" class="capWalkRow" data-sku="${x.sku}"><span><strong>${brandLabelOf(x.p)}</strong><br>${x.p.description}<br><small>SKU ${x.sku}</small></span><b>${x.cap}</b></button>`).join('')||'<div class="card muted">No capacities recorded yet. Scan your first bag or enter a SKU.</div>';
+ $('capPickRows').querySelectorAll('[data-sku]').forEach(b=>b.onclick=()=>openCapacityWalk(S.products[b.dataset.sku]||{sku:b.dataset.sku,description:b.dataset.sku,upcs:[]}));
 }
+function openCapacityWalk(p){
+ modalCtx={mode:'capacityWalkOnly',p};$('modalName').textContent=p.description||p.sku;$('modalMeta').textContent='SKU '+p.sku;
+ $('modalMode').textContent='CAPACITY WALK · RECORD ONLY';$('modalPrompt').textContent='Saved capacity: '+(S.capacityOriginal[p.sku]??'NOT SET');
+ $('stageTitle').textContent='HOW MANY BAGS FIT ON THE SHELF?';$('pickedNote').textContent='Tap 0–12. The number is saved immediately without changing pick-list quantities.';
+ renderNumberButtons(12,n=>{S.capacityOriginal[p.sku]=n;S.capacities[p.sku]=n;S.capacityPicked[p.sku]=0;save();$('amountModal').classList.remove('show','scannerPick');render();flash('CAPACITY SAVED · '+n);},false);
+ $('amountModal').classList.add('show');
+}
+if($('capWalkSearch'))$('capWalkSearch').oninput=renderCapacityPick;
 function renderMaster(){let q=($('masterSearch')?.value||'').toUpperCase();let a=Object.values(S.products).filter(p=>(p.sku+p.description+(p.upcs||[]).join()).toUpperCase().includes(q)).slice(0,400);$('masterList').innerHTML=a.map(p=>itemHtml(p)).join('')}
 $('masterSearch').oninput=renderMaster;
 
@@ -1074,7 +1084,7 @@ $('planogramFiles').onchange=async e=>{
    // Remove stale mappings from an older upload of the same filename/category.
    let old=S.planograms[title];
    if(old)for(const sku of old.skus||[])if(S.planogramSkuMap[sku]===title)delete S.planogramSkuMap[sku];
-   S.planograms[title]={title,fileName:f.name,skus:rows.map(r=>r.sku),count:rows.length,imported:new Date().toISOString()};
+   S.planograms[title]={title,fileName:f.name,skus:rows.map(r=>r.sku),count:rows.length,category:$('pgImportCategory').value,aisle:$('pgImportAisle').value.trim()||title,imported:new Date().toISOString()};
    for(const r of rows){
      S.planogramSkuMap[r.sku]=title;
      let p=S.products[r.sku]||(S.products[r.sku]={sku:r.sku,description:r.description||'Unknown product',section:'unknown',upcs:[]});
@@ -1094,12 +1104,14 @@ function renderPlanograms(){
  let mapped=Object.keys(S.planogramSkuMap||{}).length;
  if($('pgFileCount'))$('pgFileCount').textContent=pgs.length;
  if($('pgSkuCount'))$('pgSkuCount').textContent=mapped;
- if($('planogramList'))$('planogramList').innerHTML=pgs.map(p=>`<div class="item"><b>${p.title}</b><div class="small">${p.count||p.skus?.length||0} SKUs · ${p.fileName||''}</div></div>`).join('')||'<div class="item muted">No planograms uploaded yet.</div>';
+ if($('planogramList'))$('planogramList').innerHTML=pgs.map(p=>`<div class="item"><b>${p.title}</b><div class="small">${p.count||p.skus?.length||0} SKUs · ${p.fileName||''}</div><select class="pgCategoryEdit" data-pg="${p.title.replaceAll('&quot;','')}"><option value="auto">Auto / review</option>${[['dog','Dog Food'],['cat','Cat Food'],['wildbird','Wild Bird'],['poultry','Chicken / Poultry'],['equine','Equine'],['livestock','Cattle / Livestock']].map(([k,l])=>`<option value="${k}" ${p.category===k?'selected':''}>${l}</option>`).join('')}</select></div>`).join('')||'<div class="item muted">No planograms uploaded yet.</div>';
+ $('planogramList')?.querySelectorAll('.pgCategoryEdit').forEach(el=>el.onchange=()=>{S.planograms[el.dataset.pg].category=el.value;save();render()});
  let rows=S.packing?.rows||[],un=rows.filter(r=>!S.planogramSkuMap?.[r.sku]),ma=rows.length-un.length;
  if($('pgInboundMapped'))$('pgInboundMapped').textContent=rows.length?`${ma}/${rows.length}`:'—';
  if($('pgInboundUnmapped'))$('pgInboundUnmapped').textContent=rows.length?un.length:'—';
  if($('planogramUnmapped'))$('planogramUnmapped').innerHTML=un.map(r=>`<div class="item"><b>${r.description||'Unknown'}</b><div class="small">SKU ${r.sku} · inbound ${r.shipped}</div></div>`).join('')||'<div class="item muted">No unmapped inbound SKUs.</div>';
 }
+$('pgOverrideSave').onclick=()=>{const sku=$('pgOverrideSku').value.trim();if(!/^\d{7}$/.test(sku)){alert('Enter a 7-digit SKU');return}S.skuCategoryOverrides=S.skuCategoryOverrides||{};S.skuCategoryOverrides[sku]=$('pgOverrideCategory').value;const aisle=$('pgOverrideAisle').value.trim();if(aisle)S.planogramSkuMap[sku]=aisle;save();render();flash('SKU ASSIGNMENT SAVED')};
 function parsePacking(t){let lines=t.split(/\n/).map(x=>x.trim()).filter(Boolean),out=[];for(let i=0;i<lines.length-2;i++){if(/^\d{7}$/.test(lines[i])&&!isNaN(+lines[i+2]))out.push({sku:lines[i],description:lines[i+1],shipped:+lines[i+2]})}if(out.length)return out;let re=/(\d{7})\s+(.+?)\s+(\d+(?:\.\d+)?)(?=\s+\d{7}|$)/gs,m;while((m=re.exec(t)))out.push({sku:m[1],description:m[2].trim(),shipped:+m[3]});return out}
 $('packingFile').onchange=async e=>{let f=e.target.files[0];if(!f)return;let t=await pdfText(f),rows=parsePacking(t);for(const r of rows){let p=S.products[r.sku]||(S.products[r.sku]={sku:r.sku,description:r.description,section:'freight',upcs:[]});if(!p.description)p.description=r.description}S.packing={name:f.name,rows};save();render();alert(`Loaded ${rows.length} packing-list rows`)};
 function zoneOf(p){
@@ -1120,7 +1132,20 @@ function zoneOf(p){
  }
  return 'Other / Unmapped';
 }
-function packCalc(r){let p=S.products[r.sku]||{sku:r.sku,description:r.description,section:'freight'},w=weightOf(p.description||r.description),sec=p.section||'freight',planogram=S.planogramSkuMap?.[r.sku]||p.planogram||null,cap=S.capacities[r.sku],floor=cap==null?null:Math.min(r.shipped,cap),over=floor==null?null:Math.max(0,r.shipped-floor);return {...r,p,w,sec,planogram,zone:zoneOf(p),cap,floor,over,pounds:w!=null?r.shipped*w:null,floorPounds:(w!=null&&floor!=null)?floor*w:null,overPounds:(w!=null&&over!=null)?over*w:null,brand:brandOf(p.description||r.description)}}
+function feedCategory(p){
+ const sku=String(p.sku||'');const d=(p.description||'').toUpperCase();
+ const explicit=S.skuCategoryOverrides?.[sku];if(explicit)return explicit;
+ const pg=S.planogramSkuMap?.[sku]||p.planogram||'';
+ const meta=S.planograms?.[pg];if(meta?.category&&meta.category!=='auto')return meta.category;
+ if(/WILD BIRD|BIRD SEED|SUNFLOWER|CARDINAL|SUET|FINCH|SONGBIRD/.test(d)||/^(RW |CL WILD)/.test(d))return 'wildbird';
+ if(/MEATBIRD|LAYER|LAYENA|FLOCK|SCRATCH|DUCK PLT|HEARTY HEN|FEATHER FIXER|OYSTER SHELL|GAME BIRD/.test(d))return 'poultry';
+ if(p.section==='bird')return 'poultry';
+ if(['dog','cat','equine','livestock'].includes(p.section))return p.section;
+ if(/HAY|ALFALFA|BEET PULP/.test(d))return 'equine';
+ return 'unknown';
+}
+function feedCategoryLabel(sec){return ({dog:'Dog Food',cat:'Cat Food',equine:'Equine',livestock:'Cattle & Livestock',poultry:'Chicken / Poultry',wildbird:'Wild Bird',unknown:'Other / Unmapped'})[sec]||sec}
+function packCalc(r){let p=S.products[r.sku]||{sku:r.sku,description:r.description,section:'freight'},w=weightOf(p.description||r.description),sec=feedCategory(p),planogram=S.planogramSkuMap?.[r.sku]||p.planogram||null,cap=S.capacities[r.sku],floor=cap==null?null:Math.min(r.shipped,cap),over=floor==null?null:Math.max(0,r.shipped-floor);return {...r,p,w,sec,planogram,zone:zoneOf(p),cap,floor,over,pounds:w!=null?r.shipped*w:null,floorPounds:(w!=null&&floor!=null)?floor*w:null,overPounds:(w!=null&&over!=null)?over*w:null,brand:brandOf(p.description||r.description)}}
 function aisleLabel(sec){return ({dog:'Dog Food',cat:'Cat Food',bird:'Chicken / Poultry',livestock:'Cattle & Livestock',equine:'Equine',freight:'Other / Unmapped',unknown:'Unknown'})[sec]||sec}
 let packingBreakMode='category';
 function setPackingBreakMode(mode){
@@ -1130,7 +1155,7 @@ function setPackingBreakMode(mode){
 }
 function renderPacking(){
  let rows=(S.packing?.rows||[]).map(packCalc);
- let feed=rows.filter(x=>['dog','livestock','equine','cat','bird'].includes(x.sec));
+ let feed=rows.filter(x=>['dog','livestock','equine','cat','poultry','wildbird'].includes(x.sec));
  const summary=$('packingSummary'), box=$('packingBreakdown'), detail=$('packingRows');
  if(!feed.length){
    if(summary)summary.innerHTML='<div class="card muted">No feed bags found in the loaded packing list.</div>';
@@ -1150,7 +1175,7 @@ function renderPacking(){
  </div></div>`;
  let groups={};
  for(const x of feed){
-   const key=packingBreakMode==='aisle'?(x.planogram||'UNMAPPED'):aisleLabel(x.sec);
+   const key=packingBreakMode==='aisle'?(S.planograms?.[x.planogram]?.aisle||x.planogram||'UNMAPPED'):feedCategoryLabel(x.sec);
    const g=groups[key]||(groups[key]={bags:0,pounds:0,unknownWeightBags:0,skus:0});
    g.bags+=+x.shipped||0; g.skus++;
    if(x.pounds!=null)g.pounds+=x.pounds; else g.unknownWeightBags+=+x.shipped||0;
@@ -1158,8 +1183,8 @@ function renderPacking(){
  const entries=Object.entries(groups).sort((a,b)=>b[1].bags-a[1].bags);
  if(box)box.innerHTML=`<table>
    <tr><th>${packingBreakMode==='aisle'?'Aisle / planogram':'Category'}</th><th>Bags</th><th>% bags</th><th>Weight</th><th>% weight*</th></tr>
-   ${entries.map(([name,g])=>`<tr>
-     <td><b>${name}</b></td>
+   ${entries.map(([name,g])=>`<tr class="packGroupRow" data-group="${encodeURIComponent(name)}" style="cursor:pointer">
+     <td><b>${name} ▾</b></td>
      <td><b>${g.bags}</b></td>
      <td>${totalBags?(100*g.bags/totalBags).toFixed(1):'0.0'}%</td>
      <td>${Math.round(g.pounds).toLocaleString()} lb${g.unknownWeightBags?` <span class="warn">+ ${g.unknownWeightBags} bag${g.unknownWeightBags===1?'':'s'} ?</span>`:''}</td>
@@ -1167,17 +1192,24 @@ function renderPacking(){
    </tr>`).join('')}
  </table>
  <div class="small muted" style="margin-top:8px">*Weight percentages use bags with a readable package weight only. Bag percentages use all feed bags. ${packingBreakMode==='aisle'?'Aisles come directly from the imported SKU → planogram filename map.':''}</div>`;
+ if(box){box.querySelectorAll('.packGroupRow').forEach(tr=>tr.onclick=()=>{
+ const name=decodeURIComponent(tr.dataset.group),selected=feed.filter(x=>(packingBreakMode==='aisle'?(S.planograms?.[x.planogram]?.aisle||x.planogram||'UNMAPPED'):feedCategoryLabel(x.sec))===name);
+ const total=selected.reduce((n,x)=>n+x.shipped,0),known=selected.reduce((n,x)=>n+(x.pounds||0),0),groups={};
+ for(const x of selected){const brand=brandLabelOf(x.p),g=groups[brand]||(groups[brand]={bags:0,weight:0,unknown:0});g.bags+=x.shipped;if(x.pounds!=null)g.weight+=x.pounds;else g.unknown+=x.shipped}
+ let next=tr.nextElementSibling;if(next?.classList.contains('brandDrillRow')){next.remove();return}
+ box.querySelectorAll('.brandDrillRow').forEach(x=>x.remove());next=document.createElement('tr');next.className='brandDrillRow';next.innerHTML=`<td colspan="5"><b style="color:#ffb020">${name} · Brand distribution</b><div class="scroll"><table><tr><th>Brand</th><th>Bags</th><th>% bags</th><th>Known lb</th><th>% known lb</th></tr>${Object.entries(groups).sort((a,b)=>b[1].bags-a[1].bags).map(([brand,g])=>`<tr><td style="color:#ffb020;font-weight:800">${brand}</td><td>${g.bags}</td><td>${(100*g.bags/total).toFixed(1)}%</td><td>${Math.round(g.weight).toLocaleString()}${g.unknown?' + ?':''}</td><td>${known?(100*g.weight/known).toFixed(1)+'%':'—'}</td></tr>`).join('')}</table></div></td>`;tr.after(next);
+ })}
  if(detail)detail.innerHTML=feed.slice().sort((a,b)=>b.shipped-a.shipped).map(x=>`<div class="item section-${x.sec}">
    <b>${x.p.description||x.description}</b>
-   <div class="small">SKU ${x.sku} · <b>${x.shipped} bags</b> · ${aisleLabel(x.sec)} · ${x.planogram||'UNMAPPED'} · ${x.w!=null?x.w+' lb/bag':'weight ?'}</div>
+   <div class="small">SKU ${x.sku} · <b>${x.shipped} bags</b> · ${feedCategoryLabel(x.sec)} · ${x.planogram||'UNMAPPED'} · ${x.w!=null?x.w+' lb/bag':'weight ?'}</div>
  </div>`).join('');
 }
 let allocationView='total';
 const ALLOC_SECTIONS=[
- ['total','TOTAL FEED'],['dog','DOG'],['cat','CAT'],['equine','EQUINE'],['livestock','CATTLE / LIVESTOCK'],['bird','CHICKEN / POULTRY']
+ ['total','TOTAL FEED'],['dog','DOG'],['cat','CAT'],['equine','EQUINE'],['livestock','CATTLE / LIVESTOCK'],['poultry','CHICKEN / POULTRY'],['wildbird','WILD BIRD']
 ];
-function allocSectionLabel(sec){return ({dog:'Dog Food',cat:'Cat Food',equine:'Equine',livestock:'Cattle / Livestock',bird:'Chicken / Poultry'})[sec]||aisleLabel(sec)}
-function allocationRows(){return (S.packing?.rows||[]).map(packCalc).filter(x=>['dog','cat','equine','livestock','bird'].includes(x.sec))}
+function allocSectionLabel(sec){return ({dog:'Dog Food',cat:'Cat Food',equine:'Equine',livestock:'Cattle / Livestock',bird:'Chicken / Poultry',poultry:'Chicken / Poultry',wildbird:'Wild Bird'})[sec]||aisleLabel(sec)}
+function allocationRows(){return (S.packing?.rows||[]).map(packCalc).filter(x=>['dog','cat','equine','livestock','poultry','wildbird'].includes(x.sec))}
 function setAllocationView(v){allocationView=v;renderAllocation()}
 function renderAllocation(){
  let all=allocationRows(), head=$('allocationHeadline'), tabs=$('allocationTabs'), box=$('allocationTable'), detail=$('allocationSkuDetail');
@@ -1199,9 +1231,9 @@ function renderAllocation(){
  detail.innerHTML=skuRows.map(x=>{let brand=BOOT.brandNames[x.brand]||x.brand||'Unknown',status=x.cap==null?'<span class="warn">CAPACITY UNKNOWN</span>':`<span class="good">FLOOR ${x.floor}</span> · OVERSTOCK ${x.over}`;return `<details class="allocSku"><summary>${brand} · ${x.p.description||x.description}</summary><div class="allocSkuBody small">SKU <b>${x.sku}</b> · Inbound <b>${x.shipped}</b> · Capacity <b>${x.cap??'?'}</b> · ${status}${x.planogram?`<br><span class="muted">Planogram: ${x.planogram}</span>`:''}</div></details>`}).join('')||'<div class="muted">No SKUs in this category.</div>';
 }
 function download(name,text,type='application/json'){let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
-function productDataPayload(){return {kind:'pickle-product-data',version:1,exportedAt:new Date().toISOString(),products:S.products,aliases:S.aliases,matchedPairs:S.matchedPairs||[],noBagSeen:S.noBagSeen||[],pendingPairs:S.pendingPairs||[],planograms:S.planograms||{},planogramSkuMap:S.planogramSkuMap||{},updateList:S.updateList||[],capacities:S.capacities||{},capacityOriginal:S.capacityOriginal||{},capacityPicked:S.capacityPicked||{}}}
+function productDataPayload(){return {kind:'pickle-product-data',version:1,exportedAt:new Date().toISOString(),products:S.products,aliases:S.aliases,matchedPairs:S.matchedPairs||[],noBagSeen:S.noBagSeen||[],pendingPairs:S.pendingPairs||[],planograms:S.planograms||{},planogramSkuMap:S.planogramSkuMap||{},skuCategoryOverrides:S.skuCategoryOverrides||{},updateList:S.updateList||[],capacities:S.capacities||{},capacityOriginal:S.capacityOriginal||{},capacityPicked:S.capacityPicked||{}}}
 $('exportProductData').onclick=()=>download('pickle-product-data.json',JSON.stringify(productDataPayload(),null,2),'application/json');
-$('importProductData').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{let d=JSON.parse(await f.text());if(!d||typeof d!=='object'||!d.products)throw new Error('JSON has no products object');let pc=0,uc=0;for(const [sku0,p0] of Object.entries(d.products||{})){const sku=String(sku0),p=p0||{},cur=S.products[sku]||{sku,upcs:[]};const merged={...cur,...p,sku,upcs:[...new Set([...(cur.upcs||[]),...(p.upcs||[]),p.upc].map(norm).filter(Boolean))],bagUpcs:[...new Set([...(cur.bagUpcs||[]),...(p.bagUpcs||[])].map(norm).filter(Boolean))],shelfUpcs:[...new Set([...(cur.shelfUpcs||[]),...(p.shelfUpcs||[])].map(norm).filter(Boolean))]};merged.masterSources=[...new Set([...(cur.masterSources||[]),...(p.masterSources||[]),'json-import'])];S.products[sku]=merged;pc++}S.aliases=S.aliases||{};for(const [u,sku] of Object.entries(d.aliases||{})){const n=norm(u);if(n)S.aliases[n]=String(sku)}for(const p of Object.values(S.products))for(const u of [...(p.upcs||[]),...(p.bagUpcs||[]),...(p.shelfUpcs||[])]){const n=norm(u);if(n){S.aliases[n]=p.sku;uc++}}const uniq=(arr,key)=>{const m=new Map();for(const x of arr||[]){const k=key(x);m.set(k,x)}return [...m.values()]};S.matchedPairs=uniq([...(S.matchedPairs||[]),...(d.matchedPairs||[])],x=>[x.sku,norm(x.shelf),norm(x.bag),x.source].join('|'));S.noBagSeen=uniq([...(S.noBagSeen||[]),...(d.noBagSeen||[])],x=>[x.sku,norm(x.shelf)].join('|'));S.pendingPairs=uniq([...(S.pendingPairs||[]),...(d.pendingPairs||[])],x=>[norm(x.a),norm(x.b)].join('|'));S.planograms={...(S.planograms||{}),...(d.planograms||{})};S.planogramSkuMap={...(S.planogramSkuMap||{}),...(d.planogramSkuMap||{})};let by=Object.fromEntries((S.updateList||[]).map(x=>[x.sku,x]));for(const x of d.updateList||[])by[x.sku]={...(by[x.sku]||{}),...x};S.updateList=Object.values(by);S.capacities={...(S.capacities||{}),...(d.capacities||{})};S.capacityOriginal={...(S.capacityOriginal||{}),...(d.capacityOriginal||{})};S.capacityPicked={...(S.capacityPicked||{}),...(d.capacityPicked||{})};save();render();alert(`Product Data merged ✓\n${pc} product records processed\n${Object.keys(S.aliases).length} UPC aliases now known`)}catch(err){console.error(err);alert('Import failed: '+(err.message||err))}e.target.value=''};
+$('importProductData').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{let d=JSON.parse(await f.text());if(!d||typeof d!=='object'||!d.products)throw new Error('JSON has no products object');let pc=0,uc=0;for(const [sku0,p0] of Object.entries(d.products||{})){const sku=String(sku0),p=p0||{},cur=S.products[sku]||{sku,upcs:[]};const merged={...cur,...p,sku,upcs:[...new Set([...(cur.upcs||[]),...(p.upcs||[]),p.upc].map(norm).filter(Boolean))],bagUpcs:[...new Set([...(cur.bagUpcs||[]),...(p.bagUpcs||[])].map(norm).filter(Boolean))],shelfUpcs:[...new Set([...(cur.shelfUpcs||[]),...(p.shelfUpcs||[])].map(norm).filter(Boolean))]};merged.masterSources=[...new Set([...(cur.masterSources||[]),...(p.masterSources||[]),'json-import'])];S.products[sku]=merged;pc++}S.aliases=S.aliases||{};for(const [u,sku] of Object.entries(d.aliases||{})){const n=norm(u);if(n)S.aliases[n]=String(sku)}for(const p of Object.values(S.products))for(const u of [...(p.upcs||[]),...(p.bagUpcs||[]),...(p.shelfUpcs||[])]){const n=norm(u);if(n){S.aliases[n]=p.sku;uc++}}const uniq=(arr,key)=>{const m=new Map();for(const x of arr||[]){const k=key(x);m.set(k,x)}return [...m.values()]};S.matchedPairs=uniq([...(S.matchedPairs||[]),...(d.matchedPairs||[])],x=>[x.sku,norm(x.shelf),norm(x.bag),x.source].join('|'));S.noBagSeen=uniq([...(S.noBagSeen||[]),...(d.noBagSeen||[])],x=>[x.sku,norm(x.shelf)].join('|'));S.pendingPairs=uniq([...(S.pendingPairs||[]),...(d.pendingPairs||[])],x=>[norm(x.a),norm(x.b)].join('|'));S.planograms={...(S.planograms||{}),...(d.planograms||{})};S.planogramSkuMap={...(S.planogramSkuMap||{}),...(d.planogramSkuMap||{})};S.skuCategoryOverrides={...(S.skuCategoryOverrides||{}),...(d.skuCategoryOverrides||{})};let by=Object.fromEntries((S.updateList||[]).map(x=>[x.sku,x]));for(const x of d.updateList||[])by[x.sku]={...(by[x.sku]||{}),...x};S.updateList=Object.values(by);S.capacities={...(S.capacities||{}),...(d.capacities||{})};S.capacityOriginal={...(S.capacityOriginal||{}),...(d.capacityOriginal||{})};S.capacityPicked={...(S.capacityPicked||{}),...(d.capacityPicked||{})};save();render();alert(`Product Data merged ✓\n${pc} product records processed\n${Object.keys(S.aliases).length} UPC aliases now known`)}catch(err){console.error(err);alert('Import failed: '+(err.message||err))}e.target.value=''};
 
 function csvCell(v){return '"'+String(v??'').replaceAll('"','""')+'"'}
 function parseCsvLine(line){
@@ -1325,7 +1357,7 @@ async function startCameraScan(){
   stopCameraScan();alert('Camera scanner could not start: '+(err?.message||err)+'\n\nOn iPhone: open the GitHub Pages HTTPS site in Safari and allow Camera access for this website.');
  }
 }
-$('cameraScanBtn').addEventListener('click',startCameraScan);
+if($('cameraScanBtn'))$('cameraScanBtn').addEventListener('click',startCameraScan);
 $('cameraClose').addEventListener('click',()=>stopCameraScan());
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&cameraRunning)stopCameraScan()});
 
