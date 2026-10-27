@@ -152,6 +152,10 @@ header{position:static!important;top:auto!important}
 #rackList .rackAnimalHeader{color:#ffb020;font-weight:950;font-size:13px;line-height:16px;letter-spacing:.45px;padding:5px 3px 2px;border-top:1px solid #424953;background:#222a33}
 #rackList .rackGroup h3{color:#ffb020!important;font-size:10px!important;line-height:12px!important;height:auto!important;min-height:12px!important;padding:1px 2px!important;letter-spacing:.1px!important}
 #rackList .rackGroup .row{min-height:12px!important}
+</style><style>
+/* UPC and vendor item displayed in white immediately after yellow remaining quantity */
+#rackList.qtyColumn .rackItem{width:calc(var(--rack-desc-width,150px) + 145px)!important;min-width:calc(var(--rack-desc-width,150px) + 145px)!important;}
+#rackList .rackIdentifiers{display:inline-block!important;flex:0 0 125px!important;width:125px!important;white-space:nowrap!important;color:#fff!important;font-size:4.5px!important;font-weight:650!important;line-height:7px!important;text-align:left!important;margin-left:3px!important;overflow:visible!important;}
 </style></head>
 <body>
 <div id="bagMatchBar">
@@ -1035,7 +1039,7 @@ function renderRack(){
  $('rackList').innerHTML=ordered.map(g=>{
    const animalHeader=g.animal!==lastAnimal?`<div class="rackAnimalHeader">${g.animal}</div>`:'';
    lastAnimal=g.animal;
-   return animalHeader+`<div class="card rackGroup ${g.kind}"><div class="row"><h3 class="grow">${g.brand}</h3><span class="pill">${g.rows.reduce((a,r)=>a+rackQty(r),0)} BAGS</span></div>${g.rows.sort((a,b)=>rackQty(b)-rackQty(a)).map(r=>{let p={...(S.products[r.sku]||{}),...r,description:r.description||(S.products[r.sku]?.description||'')},w=rackWeight(p);return rackInlineSku===String(r.sku)?rackInlineHtml(r):`<button class="rackItem" onclick="openRackInline(event,'${r.sku}')"><span class="rackDesc">${p.description||r.description}${w!=null?` · ${w} LB`:''}</span><span class="rackSku">SKU ${r.sku}</span><span class="rackQty">${rackQty(r)}</span></button>`}).join('')}</div>`;
+   return animalHeader+`<div class="card rackGroup ${g.kind}"><div class="row"><h3 class="grow">${g.brand}</h3><span class="pill">${g.rows.reduce((a,r)=>a+rackQty(r),0)} BAGS</span></div>${g.rows.sort((a,b)=>rackQty(b)-rackQty(a)).map(r=>{let p={...(S.products[r.sku]||{}),...r,description:r.description||(S.products[r.sku]?.description||'')},w=rackWeight(p);return rackInlineSku===String(r.sku)?rackInlineHtml(r):`<button class="rackItem" onclick="openRackInline(event,'${r.sku}')"><span class="rackDesc">${p.description||r.description}${w!=null?` · ${w} LB`:''}</span><span class="rackSku">SKU ${r.sku}</span><span class="rackQty">${rackQty(r)}</span><span class="rackIdentifiers">${r.upc||p.upc||(p.upcs||[])[0]||"—"} · ${r.vendorItem||p.vendorItem||"—"}</span></button>`}).join('')}</div>`;
  }).join('')||(S.pick?.rows?.length?'<div class="card muted">Nothing on the active pick list matches this brand/weight filter.</div>':'<div class="card muted">Upload a pick list first.</div>');
  applyRackQtyMode();
 }
